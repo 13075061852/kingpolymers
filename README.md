@@ -63,3 +63,33 @@ npm run format:check
 ## 云端
 
 详见 [部署说明](docs/deployment.md)。云端运行 `backend/server.py`，启用登录保护，经 Nginx HTTPS 提供服务。主站以外的独立 `/web/` 服务不在本仓库中。
+
+## 界面与操作
+
+当前版本 2.1 采用深蓝与青绿的统一风格，支持桌面侧边导航和手机底部导航。
+
+- 组合设计：标准模板起步、双轴组合示意、拖拽安装顺序、撤销/重做、实时工程校验。Ctrl+S 保存，Ctrl+Z 撤销，Ctrl+Shift+Z / Ctrl+Y 重做；输入框内保留正常文字编辑快捷键。
+- 项目方案：按状态、机型和名称筛选；已发布方案锁定编辑，可创建副本继续设计。
+- 元件库：清单与参数侧栏，按需加载可旋转的 3D 示意模型。
+- 库存：单件/套数显示、调整后数量预览、出入库记录。作废按实际扣库记录退回。
+- 设置：本地访问状态、备份、云端账户密码和机器参数。
+- 登录：可交互双螺杆 3D 展示、密码可见性切换、明确错误提示。
+- 工程图：分页缩略图导航、缩放、A4 横向打印；支持 PDF、Excel、JSON 和 PNG 工作流。
+
+动画尊重系统“减少动态效果”设置。3D 支持拖动旋转、暂停和复位；页面隐藏或模型离开视野后停止渲染，WebGL 不可用时回退到静态示意。3D 用于外形理解，制造尺寸以工程图纸为准。
+
+设计稿和生成提示词集中在 [UI 设计目录](docs/ui-redesign/index.html)，不参与应用运行。
+
+## 浏览器验收
+
+```powershell
+npm test
+runtime\venv\Scripts\python.exe scripts/test_backend.py
+npm run test:e2e
+```
+
+浏览器测试在 Windows 使用已安装的 Microsoft Edge；其他系统先执行 `npx playwright install chromium`。测试自动启动 8740 / 8741 两个临时服务并在完成后关闭，使用独立临时数据库和测试账号。端口占用时直接报错，不复用正式服务。
+
+截图保存在 `runtime/ui-checks/`，测试结果与失败追踪保存在 `runtime/test-artifacts/`，均不提交 Git。涵盖登录与密码轮换、设计保存与撤销、真实拖拽、导入导出、发布退库、库存调整、网络错误恢复、移动布局、3D 资源回退与帧间隔采样。
+
+3D 使用 [Three.js](https://threejs.org/)；浏览器验收使用 [Playwright](https://playwright.dev/docs/test-webserver)。

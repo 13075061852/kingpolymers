@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   Layers3,
   FolderOpen,
@@ -8,7 +8,12 @@ import {
   LogOut,
   Check,
   X,
-  ArrowLeft,
+  Menu,
+  PanelLeftClose,
+  ChevronRight,
+  Monitor,
+  UserRound,
+  LoaderCircle,
 } from 'lucide-react';
 import { api, setSession } from './lib/api.js';
 import useDesign from './hooks/useDesign.js';
@@ -19,6 +24,10 @@ import Inventory from './pages/Inventory.jsx';
 import Settings from './pages/Settings.jsx';
 import Login from './pages/Login.jsx';
 import Modal from './components/Modal.jsx';
+import Toast from './components/Toast.jsx';
+import ConfirmProvider, { useConfirm } from './components/ConfirmProvider.jsx';
+import PrintPreview from './components/PrintPreview.jsx';
+import { emptyDesign } from './domain/design.js';
 
 const pages = [
   ['designer', '组合设计', Layers3],
@@ -28,6 +37,17 @@ const pages = [
   ['settings', '设置', SettingsIcon],
 ];
 export default function App() {
+  return (
+    <ConfirmProvider>
+      <Workspace />
+    </ConfirmProvider>
+  );
+}
+function Workspace() {
+  const ask = useConfirm();
+  const [collapsed, setCollapsed] = useState(false);
+  const working = useRef(false);
+  const account = useRef(null);
   const [data, setData] = useState(null),
     [login, setLogin] = useState(false),
     [initialError, setInitialError] = useState(''),
@@ -40,6 +60,9 @@ export default function App() {
   const notify = useCallback((message, error = false) => setToast({ message, error }), []);
   const refresh = useCallback(async () => {
     const next = await api('/bootstrap');
+    if (account.current && account.current !== (next.auth.enabled ? next.auth.username : 'local'))
+      editor.load(emptyDesign());
+    account.current = next.auth.enabled ? next.auth.username : 'local';
     setSession(next.auth);
     setData(next);
     return next;
@@ -55,8 +78,10 @@ export default function App() {
       }
       await refresh();
       setLogin(false);
+      return true;
     } catch (error) {
       setInitialError(error.message);
+      return false;
     }
   }, [refresh]);
   useEffect(() => {
@@ -64,6 +89,8 @@ export default function App() {
     const expired = () => {
       setSession(null);
       setData(null);
+      setModal(null);
+      setPrint('');
       setLogin(true);
     };
     window.addEventListener('session-expired', expired);
@@ -85,6 +112,8 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', leave);
   }, [editor.dirty]);
   async function run(work) {
+    if (working.current) return false;
+    working.current = true;
     setBusy(true);
     try {
       await work();
@@ -93,15 +122,22 @@ export default function App() {
       notify(error.message, true);
       return false;
     } finally {
+      working.current = false;
       setBusy(false);
     }
   }
   async function save(asNew, approval = {}) {
+    if (working.current) return;
+    if (!asNew && editor.design.id && !editor.dirty) {
+      notify('方案已保存');
+      return;
+    }
     const payload = { ...editor.design, ...approval, ...(asNew ? { id: null } : {}) };
     if (editor.design.status === 'released' && !asNew) {
       notify('已发布项目不能直接修改，请另存为新方案', true);
       return;
     }
+    working.current = true;
     setBusy(true);
     try {
       const result = await api('/projects', payload);
@@ -114,10 +150,17 @@ export default function App() {
         setModal({ type: 'approval', asNew, error: error.message });
       else notify(error.message, true);
     } finally {
+      working.current = false;
       setBusy(false);
     }
   }
-  function askAction(action, project) {
+  async function askAction(action, project) {
+    if (
+      editor.design.id === project.id &&
+      editor.dirty &&
+      !(await ask('当前方案有未保存修改。此操作将使用已保存的方案并放弃编辑内容，是否继续？'))
+    )
+      return;
     setModal({ type: 'action', action, project });
   }
   async function projectAction(fields) {
@@ -126,12 +169,25 @@ export default function App() {
       if (action === 'delete') await api('/projects/' + project.id, undefined, 'DELETE');
       else await api(`/projects/${project.id}/${action}`, fields);
       await refresh();
+      if (editor.design.id === project.id)
+        editor.load(
+          action === 'delete'
+            ? emptyDesign(editor.design.machine)
+            : await api('/projects/' + project.id),
+        );
       setModal(null);
       notify('操作完成');
     });
   }
   async function openProject(id) {
-    if (editor.dirty && !confirm('当前方案有未保存修改，继续打开其他方案？')) return;
+    if (
+      editor.dirty &&
+      !(await ask('当前方案有未保存修改，继续打开其他方案？', {
+        title: '保留当前修改？',
+        action: '放弃修改并打开',
+      }))
+    )
+      return;
     await run(async () => {
       const project = await api('/projects/' + id);
       editor.load(project);
@@ -140,15 +196,51 @@ export default function App() {
     });
   }
   async function logout() {
-    if (editor.dirty && !confirm('当前方案未保存，确定退出登录？')) return;
+    if (
+      editor.dirty &&
+      !(await ask('当前方案未保存，退出将丢弃修改。', { title: '退出工作台', action: '退出登录' }))
+    )
+      return;
     await run(async () => {
       await api('/auth/logout', {});
+      editor.load(emptyDesign());
+      setPage('designer');
       setSession(null);
       setData(null);
       setLogin(true);
     });
   }
-  if (login) return <Login onLogin={initialize} />;
+  async function newProject() {
+    if (editor.dirty && !(await ask('当前方案尚未保存，是否放弃修改并新建？'))) return;
+    editor.load(emptyDesign(editor.design.machine));
+    setPage('designer');
+  }
+  useEffect(() => {
+    const shortcut = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (
+          data &&
+          !login &&
+          page === 'designer' &&
+          !modal &&
+          !print &&
+          !document.querySelector('dialog[open]')
+        )
+          save(false);
+      }
+    };
+    window.addEventListener('keydown', shortcut);
+    return () => window.removeEventListener('keydown', shortcut);
+  });
+  if (login)
+    return (
+      <Login
+        onLogin={async () => {
+          if (!(await initialize())) throw Error('登录后加载工作台失败，请确认服务连接后重试。');
+        }}
+      />
+    );
   if (!data)
     return (
       <main className="loading">
@@ -160,11 +252,13 @@ export default function App() {
     );
   return (
     <>
-      <div className={`app-shell ${print ? 'printing' : ''}`}>
-        <header className="topbar">
+      <div
+        className={`app-shell ${print ? 'printing' : ''} ${collapsed ? 'sidebar-collapsed' : ''}`}
+      >
+        <aside className="sidebar">
           <a
             className="brand"
-            href="#"
+            href="#designer"
             onClick={(e) => {
               e.preventDefault();
               setPage('designer');
@@ -172,127 +266,161 @@ export default function App() {
           >
             <img src="/brand-logo.svg" alt="KP" />
             <span>
-              kingpolymer<small>TWIN-SCREW WORKSPACE</small>
+              kingpolymer<small>ENGINEERING WORKSPACE</small>
             </span>
           </a>
+          <span className="sidebar-label">工作空间</span>
           <nav aria-label="主导航">
             {pages.map(([key, label, Icon]) => (
               <button
-                className={page === key ? 'active' : ''}
                 key={key}
+                title={label}
+                aria-current={page === key ? 'page' : undefined}
+                className={page === key ? 'active' : ''}
                 onClick={() => setPage(key)}
               >
-                <Icon size={17} />
+                <Icon size={20} />
                 <span>{label}</span>
+                {key === 'designer' && editor.dirty && <i className="unsaved-dot" />}
               </button>
             ))}
           </nav>
-          <div className="account">
-            <i />
-            {data.auth.enabled ? data.auth.username : '本地工作台'}
+          <div className="sidebar-bottom">
+            <div className="sidebar-user">
+              <span className="avatar">
+                <UserRound size={19} />
+              </span>
+              <div>
+                <strong>{data.auth.enabled ? data.auth.username : '本地工作台'}</strong>
+                <small>{data.auth.enabled ? '工程账户' : '仅限本机访问'}</small>
+              </div>
+            </div>
             {data.auth.enabled && (
-              <button aria-label="退出登录" className="icon-button" onClick={logout}>
+              <button className="logout-button" onClick={logout} title="退出登录">
                 <LogOut size={17} />
+                <span>退出登录</span>
               </button>
             )}
+            <button
+              className="collapse-button"
+              onClick={() => setCollapsed((v) => !v)}
+              aria-label={collapsed ? '展开导航' : '收起导航'}
+              aria-expanded={!collapsed}
+            >
+              {collapsed ? <Menu size={18} /> : <PanelLeftClose size={18} />}
+              <span>收起导航</span>
+            </button>
           </div>
-        </header>
-        <main inert={busy || undefined}>
-          {page === 'designer' && (
-            <Designer
-              data={data}
-              editor={editor}
-              onSave={save}
-              onProjects={() => setPage('projects')}
-              run={run}
-              notify={notify}
-              onPrint={setPrint}
-            />
-          )}
-          {page === 'projects' && (
-            <Projects
-              data={data}
-              onOpen={openProject}
-              onAction={askAction}
-              onRefresh={() => run(refresh)}
-            />
-          )}
-          {page === 'components' && (
-            <Components
-              data={data}
-              onSave={(fields) =>
-                run(async () => {
-                  await api('/components', fields);
-                  await refresh();
-                  notify('元件已保存');
-                })
-              }
-              onDelete={(item) => setModal({ type: 'component-delete', item })}
-            />
-          )}
-          {page === 'inventory' && (
-            <Inventory
-              data={data}
-              onAdjust={(fields) =>
-                run(async () => {
-                  await api('/inventory/adjust', fields);
-                  await refresh();
-                  notify('库存已更新');
-                })
-              }
-              onHistory={() =>
-                run(async () =>
-                  setModal({ type: 'history', rows: await api('/inventory/history') }),
-                )
-              }
-            />
-          )}
-          {page === 'settings' && (
-            <Settings
-              data={data}
-              onBackup={() =>
-                run(async () => {
-                  const result = await api('/backup', {});
-                  notify('备份完成：' + result.file);
-                })
-              }
-              onPassword={(fields) =>
-                run(async () => {
-                  if (fields.new_password !== fields.confirm_password)
-                    throw Error('两次新密码不一致');
-                  await api('/auth/password', fields);
-                  setSession(null);
-                  setLogin(true);
-                  setData(null);
-                })
-              }
-            />
-          )}
-        </main>
-        <footer className="app-footer">
-          <span>kingpolymer · React edition</span>
-          <span>工程数据保存在当前服务中</span>
-        </footer>
+        </aside>
+        <div className="workspace">
+          <header className="workspace-topbar">
+            <div className="breadcrumb">
+              <span>工作空间</span>
+              <ChevronRight size={14} />
+              <strong>{pages.find((p) => p[0] === page)?.[1]}</strong>
+            </div>
+            <div className="account">
+              <span className="connection-dot" />
+              <span>{data.auth.enabled ? '工程工作台' : '本地工作台'}</span>
+              <Monitor size={15} />
+            </div>
+          </header>
+          <main className="workspace-content" id="main-content" inert={busy || undefined}>
+            <div className="page-transition" key={page}>
+              {page === 'designer' && (
+                <Designer
+                  data={data}
+                  editor={editor}
+                  onSave={save}
+                  onProjects={() => setPage('projects')}
+                  run={run}
+                  notify={notify}
+                  onPrint={setPrint}
+                />
+              )}
+              {page === 'projects' && (
+                <Projects
+                  data={data}
+                  onOpen={openProject}
+                  onAction={askAction}
+                  onRefresh={() => run(refresh)}
+                  onNew={newProject}
+                />
+              )}
+              {page === 'components' && (
+                <Components
+                  data={data}
+                  onSave={(fields) =>
+                    run(async () => {
+                      await api('/components', fields);
+                      await refresh();
+                      notify('元件已保存');
+                    })
+                  }
+                  onDelete={(item) => setModal({ type: 'component-delete', item })}
+                />
+              )}
+              {page === 'inventory' && (
+                <Inventory
+                  data={data}
+                  onAdjust={(fields) =>
+                    run(async () => {
+                      await api('/inventory/adjust', fields);
+                      await refresh();
+                      notify('库存已更新');
+                    })
+                  }
+                  onHistory={() =>
+                    run(async () =>
+                      setModal({ type: 'history', rows: await api('/inventory/history') }),
+                    )
+                  }
+                />
+              )}
+              {page === 'settings' && (
+                <Settings
+                  data={data}
+                  onBackup={() =>
+                    run(async () => {
+                      await api('/backup', {});
+                      notify('当前工程数据已备份');
+                    })
+                  }
+                  onPassword={(fields) =>
+                    run(async () => {
+                      if (fields.new_password !== fields.confirm_password)
+                        throw Error('两次新密码不一致');
+                      if (
+                        editor.dirty &&
+                        !(await ask('修改密码后需要重新登录，当前未保存方案将被放弃。是否继续？'))
+                      )
+                        return;
+                      await api('/auth/password', fields);
+                      editor.load(emptyDesign());
+                      setSession(null);
+                      setLogin(true);
+                      setData(null);
+                    })
+                  }
+                />
+              )}
+            </div>
+          </main>
+          <footer className="app-footer">
+            <span>kingpolymer · 双螺杆工程工作台</span>
+            <span>工程数据保存在当前服务中</span>
+          </footer>
+        </div>
       </div>
       {busy && (
         <div role="status" className="busy">
+          <LoaderCircle size={16} className="spin" />
           正在处理…
         </div>
       )}
-      {toast && (
-        <div
-          role={toast.error ? 'alert' : 'status'}
-          className={`toast ${toast.error ? 'error' : ''}`}
-        >
-          {toast.error ? <X size={18} /> : <Check size={18} />}
-          <span>{toast.message}</span>
-          <button aria-label="关闭提示" onClick={() => setToast(null)}>
-            <X size={14} />
-          </button>
-        </div>
-      )}
+      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
       {modal?.type === 'approval' && (
-        <Modal title="方案需要工程复核" onClose={() => setModal(null)}>
+        <Modal busy={busy} title="方案需要工程复核" onClose={() => setModal(null)}>
           <p className="warning">{modal.error}</p>
           <form
             onSubmit={(e) => {
@@ -321,6 +449,7 @@ export default function App() {
       )}
       {modal?.type === 'action' && (
         <Modal
+          busy={busy}
           title={
             { release: '发布生产方案', void: '作废方案并退回库存', delete: '删除方案' }[
               modal.action
@@ -372,7 +501,7 @@ export default function App() {
         </Modal>
       )}
       {modal?.type === 'component-delete' && (
-        <Modal title="删除元件" onClose={() => setModal(null)}>
+        <Modal busy={busy} title="删除元件" onClose={() => setModal(null)}>
           <p>将停用元件 {modal.item.name}，历史记录保留。</p>
           <footer>
             <button onClick={() => setModal(null)}>取消</button>
@@ -423,21 +552,7 @@ export default function App() {
           </div>
         </Modal>
       )}
-      {print && (
-        <div className="print-preview">
-          <header>
-            <button onClick={() => setPrint('')}>
-              <ArrowLeft size={16} />
-              返回编辑
-            </button>
-            <strong>工程图预览</strong>
-            <button className="primary" onClick={() => window.print()}>
-              打印 / 保存 PDF
-            </button>
-          </header>
-          <div id="printRoot" dangerouslySetInnerHTML={{ __html: print }} />
-        </div>
-      )}
+      {print && <PrintPreview html={print} onClose={() => setPrint('')} />}
     </>
   );
 }

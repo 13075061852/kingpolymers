@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  /><title>kingpolymer · UI 升级设计</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: 'Microsoft YaHei', system-ui, sans-serif;
+      background: #f3f6f8;
+      color: #123f63;
+    }
+    header {
+      padding: 36px 5vw;
+      background: white;
+      border-bottom: 1px solid #dbe4e9;
+    }
+    h1 {
+      font-size: 28px;
+      margin: 0 0 12px;
+    }
+    p {
+      color: #607486;
+      line-height: 1.7;
+    }
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    a {
+      color: #168d91;
+    }
+    nav a {
+      padding: 8px 14px;
+      border: 1px solid #d9e5e9;
+      border-radius: 6px;
+      text-decoration: none;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px;
+      padding: 32px 5vw;
+    }
+    article {
+      background: white;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #dbe4e9;
+      scroll-margin: 20px;
+    }
+    article a {
+      display: block;
+    }
+    img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    h2 {
+      font-size: 17px;
+      margin: 18px 20px;
+    }
+    footer {
+      padding: 0 5vw 30px;
+      color: #607486;
+    }
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+  <header>
+    <h1>kingpolymer · UI 升级设计</h1>
+    <p>
+      7 张页面设计图 · 深蓝与青绿工程风格<br />2.1
+      版本已参照设计图完成界面升级。图中业务数据仅用于演示，实际交互以运行项目为准。点击图片查看原图。
+    </p>
+    <nav>
+      <a href="#01-login">登录页面</a><a href="#02-designer">组合设计工作台</a
+      ><a href="#03-projects">项目方案</a><a href="#04-components">元件库</a
+      ><a href="#05-inventory">库存管理</a><a href="#06-settings">系统设置</a
+      ><a href="#07-report-preview">工程图预览</a>
+    </nav>
+  </header>
+  <main class="grid">
+    <article id="01-login">
+      <h2>登录页面</h2>
+      <a href="./01-login.png" target="_blank"
+        ><img src="./01-login.png" alt="登录页面 UI 升级设计图" loading="lazy"
+      /></a>
+    </article>
+    <article id="02-designer">
+      <h2>组合设计工作台</h2>
+      <a href="./02-designer.png" target="_blank"
+        ><img src="./02-designer.png" alt="组合设计工作台 UI 升级设计图" loading="lazy"
+      /></a>
+    </article>
+    <article id="03-projects">
+      <h2>项目方案</h2>
+      <a href="./03-projects.png" target="_blank"
+        ><img src="./03-projects.png" alt="项目方案 UI 升级设计图" loading="lazy"
+      /></a>
+    </article>
+    <article id="04-components">
+      <h2>元件库</h2>
+      <a href="./04-components.png" target="_blank"
+        ><img src="./04-components.png" alt="元件库 UI 升级设计图" loading="lazy"
+      /></a>
+    </article>
+    <article id="05-inventory">
+      <h2>库存管理</h2>
+      <a href="./05-inventory.png" target="_blank"
+        ><img src="./05-inventory.png" alt="库存管理 UI 升级设计图" loading="lazy"
+      /></a>
+    </article>
+    <article id="06-settings">
+      <h2>系统设置</h2>
+      <a href="./06-settings.png" target="_blank"
+        ><img src="./06-settings.png" alt="系统设置 UI 升级设计图" loading="lazy"
+      /></a>
+    </article>
+    <article id="07-report-preview">
+      <h2>工程图预览</h2>
+      <a href="./07-report-preview.png" target="_blank"
+        ><img src="./07-report-preview.png" alt="工程图预览 UI 升级设计图" loading="lazy"
+      /></a>
+    </article>
+  </main>
+  <footer>
+    使用内置 imagegen 生成。完整提示词与设计范围见 <a href="./README.md">README.md</a>。
+  </footer>
+</html>

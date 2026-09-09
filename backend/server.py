@@ -342,6 +342,7 @@ class Handler(AuthMixin, BaseHTTPRequestHandler):
             if p.startswith("/api/projects/"):
                 pid=p.rsplit("/",1)[-1]
                 with db() as c:
+                    c.execute("BEGIN IMMEDIATE")
                     r=c.execute("SELECT status FROM projects WHERE id=?",(pid,)).fetchone()
                     if not r:self.send_json({"error":"项目不存在"},404);return
                     if r[0]=="released":self.send_json({"error":"已发布项目请先作废，不能直接删除"},409);return
@@ -359,6 +360,7 @@ class Handler(AuthMixin, BaseHTTPRequestHandler):
                 self.send_json({"error":"存在长度、安全规则异常或自定义机筒，需要填写复核原因并输入负责人确认码","validation":check},409);return
         pid=data.get("id") or str(uuid.uuid4()); t=now();meta=data.get("metadata",{});name=meta.get("drawing_name") or data.get("name") or f"未命名-{t[:10]}"
         with db() as c:
+            c.execute("BEGIN IMMEDIATE")
             old=c.execute("SELECT status,created_at FROM projects WHERE id=?",(pid,)).fetchone()
             if old and old["status"]=="released":self.send_json({"error":"已发布项目不能直接修改，请另存为新版本"},409);return
             created=old["created_at"] if old else t
@@ -369,9 +371,10 @@ class Handler(AuthMixin, BaseHTTPRequestHandler):
     def release_project(self,pid,data):
         code=str(data.get("confirm_code",""));reason=(data.get("reason") or "正式发布").strip()
         with db() as c:
+            c.execute("BEGIN IMMEDIATE")
             row=c.execute("SELECT * FROM projects WHERE id=?",(pid,)).fetchone()
             if not row:self.send_json({"error":"项目不存在"},404);return
-            if row["status"]=="released":self.send_json({"error":"项目已经发布"},409);return
+            if row["status"]!="draft":self.send_json({"error":"只有草稿可以发布；已发布或作废方案请先另存"},409);return
             seq=loads(row["sequence_json"],[]); ports=loads(row["ports_json"],{}); check=validate(row["machine"],seq,ports)
             h=c.execute("SELECT value FROM settings WHERE key='confirm_code_hash'").fetchone()[0]
             shortages=[]; counts={n:seq.count(n)*2 for n in set(seq)}
@@ -390,24 +393,35 @@ class Handler(AuthMixin, BaseHTTPRequestHandler):
         self.send_json({"ok":True,"shortages":shortages})
     def void_project(self,pid,data):
         with db() as c:
+            c.execute("BEGIN IMMEDIATE")
             row=c.execute("SELECT * FROM projects WHERE id=?",(pid,)).fetchone()
             if not row:self.send_json({"error":"项目不存在"},404);return
             if row["status"]!="released":self.send_json({"error":"只有已发布项目可以作废"},409);return
             t=now()
             if row["stock_applied"]:
-                seq=loads(row["sequence_json"],[])
-                for name in set(seq):
-                    qty=seq.count(name)*2;comp=c.execute("SELECT id,stock FROM components WHERE machine=? AND name=?",(row["machine"],name)).fetchone()
-                    if comp and comp["stock"] is not None:
-                        c.execute("UPDATE components SET stock=stock+?,updated_at=? WHERE id=?",(qty,t,comp["id"]));c.execute("INSERT INTO inventory_transactions(component_id,delta,reason,project_id,created_at) VALUES(?,?,?,?,?)",(comp["id"],qty,"生产单作废退回",pid,t))
+                # Refund the actual net deductions, including older release/void cycles.
+                # Unknown stock at release must never create phantom stock on cancellation.
+                applied=c.execute("SELECT component_id,-SUM(delta) AS quantity FROM inventory_transactions WHERE project_id=? GROUP BY component_id HAVING SUM(delta)<0",(pid,)).fetchall()
+                for txn in applied:
+                    qty=txn["quantity"];cid=txn["component_id"]
+                    c.execute("UPDATE components SET stock=COALESCE(stock,0)+?,updated_at=? WHERE id=?",(qty,t,cid))
+                    c.execute("INSERT INTO inventory_transactions(component_id,delta,reason,project_id,created_at) VALUES(?,?,?,?,?)",(cid,qty,"生产单作废退回",pid,t))
             reason=(data.get("reason") or "生产单作废").strip();c.execute("UPDATE projects SET status='void',stock_applied=0,voided_at=?,updated_at=? WHERE id=?",(t,t,pid));c.execute("INSERT INTO audit_log(action,detail,project_id,created_at) VALUES('void',?,?,?)",(reason,pid,t))
         self.send_json({"ok":True})
     def save_component(self,x):
-        machine=str(x.get("machine","50"));name=str(x.get("name","")).strip();length=int(x.get("length") or element_length(name))
-        if not name or length<=0:self.send_json({"error":"型号和长度必须填写"},400);return
+        machine=str(x.get("machine","50"));name=str(x.get("name","")).strip();raw_length=x.get("length") or element_length(name);length=int(raw_length)
+        if not name or length<=0 or isinstance(raw_length,bool) or float(raw_length)!=length:self.send_json({"error":"型号必须填写，长度应为正整数毫米"},400);return
+        if machine not in machine_specs():self.send_json({"error":"不支持的机器型号"},400);return
         cid=x.get("id") or hashlib.sha1(f"{machine}:{name}".encode()).hexdigest()[:16];t=now()
         with db() as c:
-            old=c.execute("SELECT created_at,stock FROM components WHERE id=?",(cid,)).fetchone();created=old["created_at"] if old else t;stock=x.get("stock",old["stock"] if old else None)
+            c.execute("BEGIN IMMEDIATE")
+            old=c.execute("SELECT created_at,stock,name,machine,active FROM components WHERE id=?",(cid,)).fetchone();created=old["created_at"] if old else t;stock=old["stock"] if old else x.get("stock")
+            if old and old["active"] and not x.get("id"):
+                self.send_json({"error":"该机器中已存在同名型号，请编辑已有元件或使用新型号"},409);return
+            if old and (name!=old["name"] or machine!=old["machine"]):
+                refs=c.execute("SELECT sequence_json FROM projects WHERE machine=? UNION ALL SELECT sequence_json FROM templates WHERE machine=?",(old["machine"],old["machine"])).fetchall()
+                if any(old["name"] in loads(r[0],[]) for r in refs):
+                    self.send_json({"error":"该型号已用于方案或模板，不能直接更名或更换机型；请添加新元件"},409);return
             values=(machine,name,x.get("type") or element_type(name),length,x.get("pitch"),x.get("discs"),x.get("angle"),x.get("direction",""),stock,x.get("note",""),1,t)
             try:
                 if old:
@@ -417,11 +431,15 @@ class Handler(AuthMixin, BaseHTTPRequestHandler):
             except sqlite3.IntegrityError:self.send_json({"error":"该机器中已存在同名型号"},409);return
         self.send_json({"ok":True,"id":cid})
     def adjust_stock(self,x):
-        cid=x.get("component_id");mode=x.get("mode","set");qty=int(x.get("quantity",0));reason=(x.get("reason") or "人工盘点").strip();t=now()
+        cid=x.get("component_id");mode=x.get("mode","set");raw_qty=x.get("quantity",0);qty=int(raw_qty);reason=(x.get("reason") or "人工盘点").strip();t=now()
+        if mode not in ("set","add") or isinstance(raw_qty,bool) or float(raw_qty)!=qty:
+            self.send_json({"error":"请填写整数数量并选择有效调整方式"},400);return
         with db() as c:
-            row=c.execute("SELECT stock FROM components WHERE id=?",(cid,)).fetchone()
+            c.execute("BEGIN IMMEDIATE")
+            row=c.execute("SELECT stock FROM components WHERE id=? AND active=1",(cid,)).fetchone()
             if not row:self.send_json({"error":"元件不存在"},404);return
             old=row["stock"] or 0;new=qty if mode=="set" else old+qty;delta=new-old
+            if new<0:self.send_json({"error":"调整后库存不能小于 0"},400);return
             c.execute("UPDATE components SET stock=?,updated_at=? WHERE id=?",(new,t,cid));c.execute("INSERT INTO inventory_transactions(component_id,delta,reason,created_at) VALUES(?,?,?,?)",(cid,delta,reason,t))
         self.send_json({"ok":True,"stock":new})
     def export_xlsx(self,x):

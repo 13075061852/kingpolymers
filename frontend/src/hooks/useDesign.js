@@ -1,65 +1,69 @@
 import { useCallback, useReducer } from 'react';
 import { emptyDesign } from '../domain/design.js';
 const clone = (value) => structuredClone(value);
+const fingerprint = ({ machine, sequence, ports, metadata }) =>
+  JSON.stringify({ machine, sequence, ports, metadata });
 export function designReducer(state, action) {
-  if (action.type === 'load')
+  if (action.type === 'load') {
+    const design = clone(action.design);
+    const dirty = !design.id && !!(design.sequence.length || design.metadata.drawing_name);
     return {
-      current: clone(action.design),
+      current: design,
       past: [],
       future: [],
-      dirty:
-        !action.design.id &&
-        !!(action.design.sequence.length || action.design.metadata.drawing_name),
-    };
-  if (action.type === 'saved')
-    return {
-      ...state,
-      current: { ...state.current, id: action.id, status: 'draft' },
-      dirty: false,
-    };
-  if (action.type === 'undo') {
-    if (!state.past.length) return state;
-    return {
-      current: state.past.at(-1),
-      past: state.past.slice(0, -1),
-      future: [state.current, ...state.future],
-      dirty: true,
+      dirty,
+      baseline: dirty ? null : fingerprint(design),
     };
   }
-  if (action.type === 'redo') {
-    if (!state.future.length) return state;
+  if (action.type === 'saved') {
+    const identity = (d) => ({ ...d, id: action.id, status: 'draft' });
     return {
-      current: state.future[0],
-      past: [...state.past, state.current],
-      future: state.future.slice(1),
-      dirty: true,
+      ...state,
+      current: identity(state.current),
+      past: state.past.map(identity),
+      future: state.future.map(identity),
+      baseline: fingerprint(state.current),
+      dirty: false,
+    };
+  }
+  if (action.type === 'undo' || action.type === 'redo') {
+    const undo = action.type === 'undo';
+    if (!(undo ? state.past : state.future).length) return state;
+    const current = undo ? state.past.at(-1) : state.future[0];
+    return {
+      ...state,
+      current,
+      past: undo ? state.past.slice(0, -1) : [...state.past, state.current].slice(-80),
+      future: undo ? [state.current, ...state.future] : state.future.slice(1),
+      dirty: fingerprint(current) !== state.baseline,
     };
   }
   if (action.type === 'edit') {
     const next = clone(state.current);
     action.update(next);
+    if (fingerprint(next) === fingerprint(state.current)) return state;
     return {
+      ...state,
       current: next,
       past: [...state.past, state.current].slice(-80),
       future: [],
-      dirty: true,
+      dirty: fingerprint(next) !== state.baseline,
     };
   }
   return state;
 }
 export default function useDesign() {
-  const [history, dispatch] = useReducer(designReducer, {
-    current: emptyDesign(),
-    past: [],
-    future: [],
-    dirty: false,
+  const [history, dispatch] = useReducer(designReducer, undefined, () => {
+    const current = emptyDesign();
+    return { current, past: [], future: [], dirty: false, baseline: fingerprint(current) };
   });
   const edit = useCallback((update) => dispatch({ type: 'edit', update }), []);
+  const load = useCallback((design) => dispatch({ type: 'load', design }), []);
   return {
     design: history.current,
     dirty: history.dirty,
     edit,
-    load: (design) => dispatch({ type: 'load', design }),
+    load,
     saved: (id) => dispatch({ type: 'saved', id }),
     undo: () => dispatch({ type: 'undo' }),
     redo: () => dispatch({ type: 'redo' }),

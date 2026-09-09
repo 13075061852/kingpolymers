@@ -34,7 +34,8 @@ export async function exportPng(svg, name) {
   if (!svg) throw Error('图形尚未加载');
   const copy = svg.cloneNode(true);
   copy.setAttribute('width', '2400');
-  copy.setAttribute('height', '600');
+  const height = Math.round(2400 * (svg.viewBox.baseVal.height / svg.viewBox.baseVal.width));
+  copy.setAttribute('height', String(height));
   copy.removeAttribute('style');
   const url = URL.createObjectURL(
     new Blob([new XMLSerializer().serializeToString(copy)], {
@@ -47,8 +48,8 @@ export async function exportPng(svg, name) {
     await image.decode();
     const canvas = document.createElement('canvas');
     canvas.width = 2400;
-    canvas.height = 600;
-    canvas.getContext('2d').drawImage(image, 0, 0, 2400, 600);
+    canvas.height = height;
+    canvas.getContext('2d').drawImage(image, 0, 0, 2400, height);
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw Error('图片导出失败');
     download(blob, name + '.png');

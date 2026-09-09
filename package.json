@@ -1,13 +1,15 @@
 {
   "name": "kingpolymers",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "React 双螺杆工程工作台，包含元件库、机筒配置、方案管理、库存与工程图导入导出。",
   "dependencies": {
     "lucide-react": "^1.43.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "three": "^0.186.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
@@ -29,7 +31,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "python scripts/run.py",
-    "format": "prettier --write frontend/src tests/frontend vite.config.js package.json README.md docs",
-    "format:check": "prettier --check frontend/src tests/frontend vite.config.js package.json README.md docs"
+    "format": "prettier --write frontend/src tests/frontend tests/e2e playwright.config.js vite.config.js package.json README.md docs",
+    "format:check": "prettier --check frontend/src tests/frontend tests/e2e playwright.config.js vite.config.js package.json README.md docs",
+    "test:e2e": "npm run build && playwright test",
+    "test:backend": "python scripts/test_backend.py"
   }
 }

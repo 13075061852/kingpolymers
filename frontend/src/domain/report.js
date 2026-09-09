@@ -34,25 +34,22 @@ export function createReport(context) {
     return lines;
   }
   const text = (x, y, value, size = 8, extra = '') =>
-    `<text x="${x}" y="${y}" font-size="${size}" font-family="Courier New, SimSun, monospace" letter-spacing="${-size * 0.1}" ${extra}>${esc(value)}</text>`;
+    `<text x="${x}" y="${y}" font-size="${size}" font-family="Arial, Microsoft YaHei, sans-serif" ${extra}>${esc(value)}</text>`;
   const line = (x1, y1, x2, y2) =>
     `<path d="M${x1} ${y1}L${x2} ${y2}" fill="none" stroke="#333" stroke-width=".45"/>`;
   const gray = (x, y, w, h, title) =>
-    `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#c0c0c0"/>${text(x + 8, y + h - 4, title, 10)}`;
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#eaf2f6"/>${text(x + 8, y + h - 4, title, 10)}`;
   function header() {
-    return (
-      text(56.4, 71, 'KP', 5.5, 'fill="#24526a" font-weight="bold"') +
-      text(
-        738.48,
-        77,
-        'kingpolymer',
-        17,
-        'text-anchor="end" font-style="italic" font-weight="bold" fill="#545454"',
-      )
-    );
+    return `<rect x="28" y="28" width="786" height="539" fill="none" stroke="#cfdae2" stroke-width=".7"/>
+    <rect x="44" y="42" width="24" height="24" rx="5" fill="#123f63"/>
+    <path d="M48 63h16" stroke="#51c5c1" stroke-width="1.3"/>
+    ${text(56, 57, 'KP', 10, 'text-anchor="middle" fill="white" font-weight="bold"')}
+    ${text(77, 57, 'kingpolymer', 14, 'fill="#123f63" font-weight="bold"')}
+    ${text(796, 57, '双螺杆工程工作台', 8, 'text-anchor="end" fill="#8aa0af"')}
+    <path d="M44 74H797" stroke="#d9e4ea" stroke-width=".7"/>`;
   }
   function page(content, number) {
-    return `<section class="print-page reference-page page-${['one', 'two', 'three'][number - 1] || number}" data-reference-page="${number}"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 841.92 595.32" font-family="Times New Roman, Songti SC, SimSun, serif" role="img" aria-label="工程图第${number}页"><rect width="841.92" height="595.32" fill="white"/>${header()}${content}</svg></section>`;
+    return `<section class="print-page reference-page page-${['one', 'two', 'three'][number - 1] || number}" data-reference-page="${number}"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 841.92 595.32" font-family="Arial, Microsoft YaHei, sans-serif" role="img" aria-label="工程图第${number}页"><rect width="841.92" height="595.32" fill="white"/>${header()}${content}</svg></section>`;
   }
   function assembly(y, numbered = false) {
     const s = spec(),
@@ -61,7 +58,7 @@ export function createReport(context) {
       reference = DrawingAppearance.referenceView(),
       offset = reference ? s.entry_offset : 0,
       extent = Math.max(
-        s.element_length - offset,
+        v.target - offset,
         (rs.at(-1)?.mm || 0) + s.entry_offset - offset,
         v.total - offset,
         1,
@@ -131,14 +128,14 @@ export function createReport(context) {
     const s = spec(),
       cs = comps(),
       values = [
-        ['Rotation direction:', s.rotation],
-        ['Nominal diameter:', s.diameter + '  mm'],
-        ['Centerline distance:', s.center_distance + '  mm'],
-        ['Standard value:', s.diameter + '  mm'],
-        ['Max. drive power:', (state.machine === '60' ? 363 : 65) + '  kW'],
-        ['...at screw speed:', (state.machine === '60' ? 1200 : 500) + '  1/min'],
-        ['Length of the shaft [mm]:', ''],
-        ['Comment:', ''],
+        ['旋转方向:', s.rotation],
+        ['名义直径:', s.diameter + '  mm'],
+        ['中心距:', s.center_distance + '  mm'],
+        ['标准值:', s.diameter + '  mm'],
+        ['最大驱动功率:', (state.machine === '60' ? 363 : 65) + '  kW'],
+        ['对应螺杆转速:', (state.machine === '60' ? 1200 : 500) + '  1/min'],
+        ['螺杆目标长度 [mm]:', calculate().target],
+        ['材料 / 备注:', ''],
       ];
     let out = gray(56.4, 84.12, 682.08, 14.76, s.name);
     values.forEach(
@@ -147,8 +144,8 @@ export function createReport(context) {
           text(i === 5 ? 84.12 : 68.16, 108.6 + i * 8.28, label) +
           text(172.11, 108.6 + i * 8.28, value)),
     );
-    out += text(79.92, 174.84, 'Available machine configurations on request');
-    out += gray(56.4, 186.36, 682.08, 12.36, 'Machine configuration');
+    out += text(79.92, 174.84, '可用元件按当前机器型号列示，尺寸以供应商图纸为准');
+    out += gray(56.4, 186.36, 682.08, 12.36, '机型元件资料');
     const column = (x, title, groups) => {
       let y = 208.2,
         html = text(x - 10, y, title, 8.5);
@@ -181,8 +178,8 @@ export function createReport(context) {
   }
   function tables(screwRows, barrelRows) {
     let out =
-      gray(56.4, 84.12, 331.32, 14.76, 'Screw configuration') +
-      gray(397.2, 84.12, 331.32, 14.76, 'Barrel configuration');
+      gray(56.4, 84.12, 331.32, 14.76, '螺杆安装明细') +
+      gray(397.2, 84.12, 331.32, 14.76, '机筒配置');
     function table(part, x, isBarrel) {
       let a =
         text(x + 18, 105, 'No.', 5) +
@@ -237,10 +234,10 @@ export function createReport(context) {
       titleSize = Math.min(18.6, 1360 / Math.max(1, units(title)));
     let front = text(397.44, 97, title, titleSize, 'text-anchor="middle"');
     [
-      ['Machine number:', m.machine_no],
-      ['Geometry:', m.version],
-      ['Date/Author:', date + (m.author ? '/' + m.author : '')],
-      ['Comment:', [...new Set([m.material, m.comments].filter(Boolean))].join(' ')],
+      ['机器编号:', m.machine_no],
+      ['版本:', m.version],
+      ['日期 / 制图:', date + (m.author ? '/' + m.author : '')],
+      ['材料 / 备注:', [...new Set([m.material, m.comments].filter(Boolean))].join(' ')],
     ].forEach(
       ([k, val], i) =>
         (front += text(

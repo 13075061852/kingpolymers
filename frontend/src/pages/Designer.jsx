@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Plus,
   Save,
@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import Diagram from '../components/Diagram.jsx';
 import Modal from '../components/Modal.jsx';
+import { useConfirm } from '../components/ConfirmProvider.jsx';
+import ScrewPreview from '../components/ScrewPreview.jsx';
 import MetadataForm from '../components/MetadataForm.jsx';
 import BarrelPanel from '../components/BarrelPanel.jsx';
 import ComponentModels from '../domain/component-models.js';
@@ -30,10 +32,20 @@ import { api, readFile, download } from '../lib/api.js';
 import { exportPng, reportHtml } from '../lib/exports.js';
 
 export default function Designer({ data, editor, onSave, onProjects, run, notify, onPrint }) {
-  const { design, edit, dirty } = editor,
+  const ask = useConfirm();
+  const { design, edit: applyEdit, dirty } = editor,
     spec = data.machines[design.machine],
     check = validate(data, design),
     look = appearance(data, design);
+  const readOnly = design.status === 'released';
+  const edit = (update) => {
+    if (readOnly) {
+      notify('已发布方案已锁定，请先创建可编辑副本', true);
+      return;
+    }
+    applyEdit(update);
+  };
+  const [dragOver, setDragOver] = useState(-1);
   const [query, setQuery] = useState(''),
     [type, setType] = useState(''),
     [selected, setSelected] = useState(-1),
@@ -49,11 +61,19 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
   );
   const valid = !check.difference && !check.violations.length && !check.barrel_warnings.length;
   const summary = BarrelModels.summary(design.machine, spec, design.ports);
-  const replace = (next) => {
-    if (dirty && !confirm('当前方案有未保存的修改，继续会丢弃这些修改。')) return;
+  const replace = async (next) => {
+    if (
+      dirty &&
+      !(await ask('当前方案有未保存的修改，继续会丢弃这些修改。', {
+        title: '替换当前方案',
+        action: '放弃修改并继续',
+      }))
+    )
+      return;
     editor.load(next);
     setSelected(-1);
     setModal(null);
+    return true;
   };
   function add(name, index = design.sequence.length) {
     edit((d) => d.sequence.splice(index, 0, name));
@@ -69,6 +89,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
   }
   function drop(event, index) {
     event.preventDefault();
+    setDragOver(-1);
     const name = event.dataTransfer.getData('text/component'),
       raw = event.dataTransfer.getData('text/screw-index');
     if (name) {
@@ -92,6 +113,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
       notify('文件超过 20 MB，请压缩后导入', true);
       return;
     }
+    if (dirty && !(await ask('导入文件将替换当前未保存方案，是否继续？'))) return;
     await run(async () => {
       const result = await api('/import', {
         filename: incoming.name,
@@ -105,10 +127,32 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
         metadata: result.metadata || {},
         ports: result.ports || { natural4: true, natural7: true },
       };
-      replace(next);
+      editor.load(next);
+      setSelected(-1);
+      setModal(null);
       if (result.warnings?.length) notify(result.warnings.join('；'), true);
     });
   }
+  useEffect(() => {
+    function keydown(e) {
+      if (
+        modal ||
+        document.querySelector('dialog[open], .print-preview, .workspace-content[inert]') ||
+        e.target.closest('input,textarea,select,[contenteditable="true"]')
+      )
+        return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (!readOnly) e.shiftKey ? editor.redo() : editor.undo();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        if (!readOnly) editor.redo();
+      }
+    }
+    window.addEventListener('keydown', keydown);
+    return () => window.removeEventListener('keydown', keydown);
+  });
   return (
     <section className="designer">
       <div className="workspace-head">
@@ -131,12 +175,37 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
             打开
           </button>
           <button onClick={() => onSave(true)}>另存</button>
-          <button className="primary" onClick={() => onSave(false)}>
+          <button
+            className="primary"
+            title="保存方案 · Ctrl+S"
+            disabled={readOnly}
+            onClick={() => onSave(false)}
+          >
             <Save size={16} />
             保存方案
           </button>
         </div>
       </div>
+      {readOnly && (
+        <div className="readonly-notice">
+          <span>已发布方案 · 编辑已锁定，库存已按发布记录处理</span>
+          <button
+            onClick={() =>
+              replace({
+                ...design,
+                id: null,
+                status: 'draft',
+                metadata: {
+                  ...design.metadata,
+                  drawing_name: (design.metadata.drawing_name || '方案') + ' · 副本',
+                },
+              })
+            }
+          >
+            创建可编辑副本
+          </button>
+        </div>
+      )}
       <div className="workspace-tools">
         <div className="row-actions">
           <select
@@ -180,10 +249,20 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
       <section className="panel diagram-panel">
         <div className="diagram-tools">
           <div className="row-actions">
-            <button title="撤销" aria-label="撤销" disabled={!editor.canUndo} onClick={editor.undo}>
+            <button
+              title="撤销"
+              aria-label="撤销"
+              disabled={readOnly || !editor.canUndo}
+              onClick={editor.undo}
+            >
               <Undo2 size={16} />
             </button>
-            <button title="重做" aria-label="重做" disabled={!editor.canRedo} onClick={editor.redo}>
+            <button
+              title="重做"
+              aria-label="重做"
+              disabled={readOnly || !editor.canRedo}
+              onClick={editor.redo}
+            >
               <Redo2 size={16} />
             </button>
             <span className="divider" />
@@ -220,6 +299,33 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
             </button>
           </div>
         </div>
+        {!design.sequence.length && (
+          <div className="welcome-design">
+            <div>
+              <strong>开始一套新组合</strong>
+              <p>从标准模板开始，或在下方逐个添加元件。</p>
+            </div>
+            <button
+              className="primary"
+              onClick={() => {
+                const t = data.templates.find((t) => t.machine === design.machine && t.is_default);
+                if (t)
+                  replace({
+                    ...emptyDesign(design.machine),
+                    sequence: t.sequence,
+                    metadata: {
+                      ...emptyDesign().metadata,
+                      drawing_name: t.name,
+                      version: t.version || '',
+                    },
+                  });
+                else setModal('templates');
+              }}
+            >
+              使用标准模板
+            </button>
+          </div>
+        )}
         <Diagram
           data={data}
           design={design}
@@ -245,7 +351,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
         <section className="panel catalog-panel">
           <div className="section-head">
             <div>
-              <h2>螺纹元件</h2>
+              <h2>元件选择</h2>
               <span>
                 {design.machine} 机专用 · {items.length} 个型号
               </span>
@@ -285,6 +391,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
               >
                 <button
                   className="component-add"
+                  disabled={readOnly}
                   aria-label={`加入 ${c.name}`}
                   onClick={() => add(c.name)}
                 >
@@ -318,15 +425,20 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
         <section className="panel sequence-panel">
           <div className="section-head">
             <div>
-              <h2>螺杆安装顺序</h2>
+              <h2>安装顺序</h2>
               <span>
                 {design.sequence.length} 个位置 · {check.total} mm
               </span>
             </div>
             <button
-              disabled={!design.sequence.length}
-              onClick={() => {
-                if (confirm('清空全部螺纹元件？可以撤销。'))
+              disabled={readOnly || !design.sequence.length}
+              onClick={async () => {
+                if (
+                  await ask('清空全部螺纹元件？此操作可以撤销。', {
+                    action: '清空元件',
+                    danger: true,
+                  })
+                )
                   edit((d) => {
                     d.sequence = [];
                   });
@@ -348,15 +460,27 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
                 bad = check.violations.some((v) => v.index === index);
               return (
                 <div
-                  className={`sequence-row ${selected === index ? 'selected' : ''} ${bad ? 'conflict' : ''}`}
+                  className={`sequence-row ${selected === index ? 'selected' : ''} ${bad ? 'conflict' : ''} ${dragOver === index ? 'drag-over' : ''}`}
                   key={index}
                   draggable
                   onClick={() => setSelected(index)}
+                  tabIndex={0}
+                  aria-label={`选择位置 ${index + 1}，${c.name}`}
+                  onKeyDown={(e) => {
+                    if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault();
+                      setSelected(index);
+                    }
+                  }}
                   onDragStart={(e) => {
                     e.dataTransfer.setData('text/screw-index', String(index));
                     e.dataTransfer.effectAllowed = 'move';
                   }}
-                  onDragOver={(e) => e.preventDefault()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOver(index);
+                  }}
+                  onDragEnd={() => setDragOver(-1)}
                   onDrop={(e) => {
                     e.stopPropagation();
                     drop(e, index);
@@ -372,7 +496,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
                   <div className="mini-actions">
                     <button
                       aria-label={`上移元件 ${index + 1}`}
-                      disabled={!index}
+                      disabled={readOnly || !index}
                       onClick={(e) => {
                         e.stopPropagation();
                         move(index, index - 1);
@@ -382,7 +506,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
                     </button>
                     <button
                       aria-label={`下移元件 ${index + 1}`}
-                      disabled={index === design.sequence.length - 1}
+                      disabled={readOnly || index === design.sequence.length - 1}
                       onClick={(e) => {
                         e.stopPropagation();
                         move(index, index + 1);
@@ -391,6 +515,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
                       <ArrowDown size={13} />
                     </button>
                     <button
+                      disabled={readOnly}
                       aria-label={`复制元件 ${index + 1}`}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -400,6 +525,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
                       <Copy size={13} />
                     </button>
                     <button
+                      disabled={readOnly}
                       aria-label={`删除元件 ${index + 1}`}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -464,7 +590,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
             </div>
           )}
         </section>
-        <BarrelPanel data={data} design={design} edit={edit} notify={notify} />
+        <BarrelPanel readOnly={readOnly} data={data} design={design} edit={edit} notify={notify} />
       </div>
       {modal === 'metadata' && (
         <Modal title="图纸资料" onClose={() => setModal(null)} wide>
@@ -644,15 +770,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
       )}
       {modal?.component && (
         <Modal title={modal.component.name} onClose={() => setModal(null)}>
-          <div
-            className="detail-symbol"
-            dangerouslySetInnerHTML={{
-              __html: ComponentModels.symbol(modal.component, spec, {
-                id: 'detail',
-                thumbnail: true,
-              }),
-            }}
-          />
+          <ScrewPreview item={modal.component} spec={spec} />
           <p>{ComponentModels.describe(modal.component)}</p>
           <p>所属机型：{spec.name}</p>
           <p className="muted">显示名称规范化，保存仍使用原始型号，不合并库存或历史记录。</p>

@@ -3,12 +3,17 @@ export function setSession(session) {
   csrf = session?.csrf || '';
 }
 export async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
-  const response = await fetch(`/api${path}`, {
-    method,
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  let response;
+  try {
+    response = await fetch(`/api${path}`, {
+      method,
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  } catch {
+    throw new Error('连接中断，请确认工作台服务已启动后重试。当前修改仍保留。');
+  }
   const json = response.headers.get('content-type')?.includes('application/json');
   const result = json ? await response.json() : await response.blob();
   if (!response.ok) {

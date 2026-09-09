@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Plus, ArrowUp, ArrowDown, Copy, Trash2 } from 'lucide-react';
 import BarrelModels from '../domain/barrel-models.js';
 import Modal from './Modal.jsx';
+import { useConfirm } from './ConfirmProvider.jsx';
 const capNames = { open: '工作开口', closed: '全封闭堵头', inject: '中心注液堵头' };
-export default function BarrelPanel({ data, design, edit, notify }) {
+export default function BarrelPanel({ data, design, edit, notify, readOnly = false }) {
+  const ask = useConfirm();
   const spec = data.machines[design.machine],
     rows = BarrelModels.rows(design.machine, spec, design.ports);
   const [config, setConfig] = useState(null),
@@ -23,7 +25,7 @@ export default function BarrelPanel({ data, design, edit, notify }) {
     }
   }
   return (
-    <section className="panel barrel-panel">
+    <fieldset disabled={readOnly} className="panel barrel-panel">
       <div className="section-head">
         <div>
           <h2>机筒配置</h2>
@@ -37,8 +39,8 @@ export default function BarrelPanel({ data, design, edit, notify }) {
           </button>
           <button onClick={() => setConfig({ target: true })}>轴长</button>
           <button
-            onClick={() => {
-              if (confirm('恢复本机标准机筒？当前操作可以撤销。'))
+            onClick={async () => {
+              if (await ask('恢复本机标准机筒？当前操作可以撤销。', { action: '恢复标准机筒' }))
                 edit((d) => {
                   d.ports = { natural4: true, natural7: true };
                 });
@@ -199,6 +201,6 @@ export default function BarrelPanel({ data, design, edit, notify }) {
           </form>
         </Modal>
       )}
-    </section>
+    </fieldset>
   );
 }
