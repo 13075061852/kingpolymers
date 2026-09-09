@@ -1,0 +1,73 @@
+.print-preview {
+  position: fixed;
+  inset: 0;
+  background: #e4e8eb;
+  z-index: 1000;
+  overflow: auto;
+}
+.print-preview > header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  padding: 13px 25px;
+  z-index: 2;
+  border-bottom: 1px solid #cfd8dc;
+}
+#printRoot {
+  max-width: 1123px;
+  margin: 25px auto;
+}
+.print-page {
+  background: white;
+  margin: 20px 0;
+  box-shadow: 0 3px 14px #0001;
+  break-after: page;
+}
+.print-page svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.print-page:last-child {
+  break-after: auto;
+}
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
+  html,
+  body {
+    background: white;
+  }
+  .app-shell,
+  .toast,
+  .busy,
+  .modal,
+  .print-preview > header {
+    display: none !important;
+  }
+  .print-preview {
+    position: static;
+    overflow: visible;
+    background: white;
+  }
+  #printRoot {
+    margin: 0;
+    max-width: none;
+  }
+  .print-page {
+    width: 297mm;
+    height: 210mm;
+    margin: 0;
+    box-shadow: none;
+    overflow: hidden;
+  }
+  .print-page svg {
+    width: 297mm;
+    height: 210mm;
+  }
+}
