@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>kingpolymer · 手册图形审核</title><link rel="stylesheet" href="review.css?v=1.16"></head>
+<body>
+<header><b>kingpolymer</b><span>手册图形审核 · 不修改现有项目与库存</span><a href="/">返回正式软件</a></header>
+<div class="notice">完整型号库：50机40条、60机30条原始记录分别显示。GFA/GFF的导程单位为mm；KB的角度是错位角。本页完整型号图是新生成的参数示意，仍待逐型号外形核对，不是已验收的手册描边图；组合总图暂不替换。原始型号不改名、不合并库存。</div>
+<section class="graphic">
+ <div class="title">Graphic configuration <span id="dimensions"></span></div>
+ <div class="tools"><label>机器 <select id="machine"><option value="50">ZSE 50CC Pro</option><option value="60">ZSE 60CC</option></select></label><button id="resetPorts" title="恢复第4、7节自然排气打开">恢复标准开口</button><label><input id="natural4" type="checkbox" checked>第4节自然排气</label><label><input id="natural7" type="checkbox" checked>第7节自然排气</label><span class="muted">取消勾选显示堵头；第5、8侧喂、第11真空不可移动</span></div>
+ <div id="barrelDrawing"></div>
+</section>
+<main>
+ <section class="pane library"><div class="title">Machine configuration · 完整型号<span id="catalogCount"></span></div><div class="tools"><input id="search" placeholder="搜索 GFA / KB / 角度"><select id="kind"><option value="">全部类型</option><option>GFA</option><option>GFF</option><option>KB</option><option>GFM</option><option>KS</option><option>Spacer</option></select><button id="smaller" title="缩小元件图标" aria-label="缩小">−</button><button id="larger" title="放大元件图标" aria-label="放大">＋</button></div><div id="gallery"></div><p class="muted foot">点击图标查看参数、手册结构参考及PDF文字出处。此审核页不添加生产元件。</p></section>
+ <section class="pane compare"><div class="title">Screw · 完整型号 / 参数 / 出处</div><div id="comparison"><p>选择左侧图标</p></div></section>
+ <section class="pane barrel"><div class="title">Barrel · 实际机筒配置</div><div class="tools"><button id="prevRow" title="选择上一个机筒位置">↑</button><button id="nextRow" title="选择下一个机筒位置">↓</button><button id="togglePort" disabled>打开／堵头封闭</button><button id="checkBarrel">校验</button></div><div class="table-scroll"><table><thead><tr><th>Pos.</th><th>mm</th><th>Label</th><th>状态</th></tr></thead><tbody id="barrelRows"></tbody></table></div><p class="muted foot">50机含1mm热隔断及27mm法兰；60机含30mm法兰。</p></section>
+</main>
+<details class="notes"><summary>本次审核范围与待核对项</summary><ul><li>来源：50/60CC手册第34页输送块、第35页KB/GFM；分别使用各机型资料，不混库。</li><li>保留螺棱、端面与中轴线，不带机筒横线或尺寸引线；完整型号和独立参数在图标下方显示。</li><li>按原始元件记录完整列库。手册参考图未标注完整长度；完整型号图为参数化工程示意，45°等缺少直接参考的图形明确提示待实图终核，不冒充原图。</li><li>上方堵头／排气口是参照软件截图与手册部件功能绘制的界面符号，不是堵头的加工尺寸图。</li><li>工具栏采用明确的操作名称与禁用状态。未确认的原软件功能不再冒充已复刻。</li><li>请先确认轮廓和开闭状态，审核通过后再接入添加、删除、拖动、保存与导出。</li></ul><div class="manuals"><a id="barrelSource" target="_blank">查看手册第26页部件</a><a id="plugSource" target="_blank">查看手册第28页堵头</a></div></details>
+<div id="feedback" role="status" aria-live="polite"></div>
+<script src="/component-models.js?v=1.16"></script><script src="review.js?v=1.16"></script></body></html>

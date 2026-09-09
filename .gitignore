@@ -1,0 +1,11 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+runtime/
+backups/
+data/*.db*
+server-config/
+.env
+.local-backups/
+*.log

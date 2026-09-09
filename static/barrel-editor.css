@@ -1,0 +1,30 @@
+.barrel-library-note{grid-column:1/-1;margin:0;padding:6px;font-size:11px;line-height:1.5;color:#5a6970;background:#f4f8fa}
+.tile-library:has(.editable-barrel-card){grid-auto-rows:auto}
+.tile-library .editable-barrel-card{height:auto;min-height:160px;grid-template-rows:60px 24px 32px 32px;padding:4px;cursor:pointer}
+.editable-barrel-card .barrel-module-thumb{width:100%;height:60px}
+.editable-barrel-card b{white-space:normal;overflow-wrap:anywhere;font-size:11px;line-height:1.3}
+.editable-barrel-card small{font-size:10px;text-align:center;line-height:1.4}
+.barrel-card-actions{display:flex;gap:4px}.barrel-card-actions button{width:32px;height:30px;padding:0}
+.model-detail-preview .barrel-module-thumb{width:100%;max-width:360px;height:150px}
+.tile-library.list-view .editable-barrel-card{grid-template-columns:76px minmax(0,1fr);grid-template-rows:24px 32px 32px;min-height:98px;height:auto;gap:3px}
+.tile-library.list-view .editable-barrel-card .barrel-module-thumb{grid-row:1/3;width:76px;height:58px}
+.tile-library.list-view .editable-barrel-card .barrel-card-actions{grid-row:3;grid-column:1/-1;justify-self:end}
+.barrel-card{display:flex;flex-direction:column}.barrel-card>.pane-title,.barrel-card>.pane-toolbar{flex-shrink:0}
+.barrel-card .configuration-table{flex:1;min-height:0;height:auto}
+.barrel-layout-notice{margin:0;padding:4px 6px;font-size:10px;line-height:1.4;background:#fff8e6;color:#775c24;flex-shrink:0;max-height:46px;overflow:auto}
+.barrel-table .barrel-head,.barrel-table .barrel-list{min-width:530px}
+.barrel-head,.barrel-row{grid-template-columns:30px 36px 55px minmax(150px,1fr) 90px 90px}
+.barrel-row-actions{display:flex;gap:2px}.barrel-row-actions button{height:24px;width:27px;padding:0;font-size:13px}
+.barrel-row:focus-visible{outline:2px solid #1686bf;outline-offset:-2px}
+@media screen and (max-width:1200px), screen and (max-height:600px){
+ .barrel-card .configuration-table{flex:none}
+ .barrel-head,.barrel-row{grid-template-columns:34px 44px 64px minmax(170px,1fr) 100px 132px}
+ .barrel-table .barrel-head,.barrel-table .barrel-list{min-width:560px}
+ .barrel-row-actions{gap:0}.barrel-row-actions button{width:44px;height:44px;font-size:18px}
+ .barrel-layout-notice{font-size:11px;max-height:none}
+}
+@media screen and (pointer:coarse), screen and (max-width:760px){
+ .tile-library .editable-barrel-card{min-height:185px;grid-template-rows:66px 28px 34px 44px}
+ .barrel-card-actions button{width:44px;height:44px;font-size:18px}
+ .tile-library.list-view .editable-barrel-card{grid-template-rows:28px 34px 44px;min-height:122px}
+}

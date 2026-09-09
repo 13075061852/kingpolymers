@@ -1,0 +1,9 @@
+{
+  "name": "kingpolymer Twin-Screw Configurator",
+  "short_name": "kingpolymer",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f8fa",
+  "theme_color": "#eaf6fa",
+  "icons": [{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}
