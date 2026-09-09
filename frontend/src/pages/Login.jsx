@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Layers3, ShieldCheck, FolderOpen, LoaderCircle } from 'lucide-react';
+import { ArrowRight, LoaderCircle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { PasswordField } from '../components/Ui.jsx';
 import ScrewPreview from '../components/ScrewPreview.jsx';
@@ -28,40 +28,12 @@ export default function Login({ onLogin }) {
           <span>kingpolymer</span>
         </a>
         <div className="login-intro">
-          <span className="eyebrow">TWIN-SCREW ENGINEERING</span>
-          <h1>
-            精密组合。
-            <br />
-            让工艺更进一步。
-          </h1>
-          <p>
-            从每一个元件，到每一套生产方案。
-            <br />
-            专注设计，掌控细节。
-          </p>
+          <h1>双螺杆组合设计</h1>
         </div>
         <ScrewPreview hero />
-        <div className="login-features">
-          <div>
-            <Layers3 />
-            <strong>组合设计</strong>
-            <span>直观构建螺杆方案</span>
-          </div>
-          <div>
-            <ShieldCheck />
-            <strong>工程校验</strong>
-            <span>实时核对工艺规则</span>
-          </div>
-          <div>
-            <FolderOpen />
-            <strong>方案管理</strong>
-            <span>贯通设计与生产</span>
-          </div>
-        </div>
       </section>
       <section className="login-form-area">
         <form id="login" className="login-card" onSubmit={submit}>
-          <span className="eyebrow">YOUR ENGINEERING WORKSPACE</span>
           <h2>欢迎回来</h2>
           <p>登录双螺杆组合设计工作台</p>
           <fieldset disabled={busy}>
@@ -101,10 +73,6 @@ export default function Login({ onLogin }) {
               )}
             </button>
           </fieldset>
-          <div className="login-trust">
-            <ShieldCheck size={16} />
-            <span>工程数据，安全有序</span>
-          </div>
         </form>
         <footer>kingpolymer · 双螺杆工程工作台</footer>
       </section>

@@ -19,9 +19,7 @@ export default function Settings({ data, onBackup, onPassword }) {
     <section className="page">
       <div className="page-title">
         <div>
-          <span className="eyebrow">PREFERENCES</span>
           <h1>系统设置</h1>
-          <p>管理账户安全、数据备份与机器参数。</p>
         </div>
         <span className="mode-badge">
           <Monitor size={15} />
@@ -36,7 +34,6 @@ export default function Settings({ data, onBackup, onPassword }) {
             </span>
             <div>
               <h2>登录与安全</h2>
-              <p>保护你的工程数据</p>
             </div>
           </div>
           {data.auth.enabled ? (
@@ -87,14 +84,8 @@ export default function Settings({ data, onBackup, onPassword }) {
             </>
           ) : (
             <div className="local-security">
-              <Monitor size={34} />
-              <h3>专属于这台电脑</h3>
-              <p>
-                本地模式无需登录。
-                <br />
-                工作台仅允许本机访问。
-              </p>
-              <span className="badge released">本机访问保护已启用</span>
+              <span className="badge released">仅本机访问</span>
+              <p>本地模式 · 无需登录</p>
             </div>
           )}
         </article>
@@ -105,21 +96,10 @@ export default function Settings({ data, onBackup, onPassword }) {
             </span>
             <div>
               <h2>数据备份</h2>
-              <p>为每一次设计保留保障</p>
             </div>
           </div>
-          <div className="backup-visual">
-            <Database size={48} />
-            <span className="badge released">
-              <Check size={12} />
-              每日自动备份
-            </span>
-          </div>
-          <h3>安心设计，随时备份</h3>
           <p>
-            保存当前工程数据，便于恢复与迁移。
-            <br />
-            本地与云端数据独立保存。
+            <span className="badge released">每日自动备份</span>
           </p>
           <button className="primary" disabled={backing} onClick={backup}>
             {backing ? <LoaderCircle className="spin" size={16} /> : <Database size={16} />}{' '}
@@ -141,7 +121,6 @@ export default function Settings({ data, onBackup, onPassword }) {
               <h2>
                 固定机器参数 <span className="badge">只读</span>
               </h2>
-              <p>标准尺寸参考</p>
             </div>
             <MachineReference />
           </div>

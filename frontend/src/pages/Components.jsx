@@ -31,18 +31,8 @@ export default function Components({ data, onSave, onDelete }) {
   }
   return (
     <section className="page">
-      <div className="page-title">
-        <div>
-          <span className="eyebrow">COMPONENT CATALOG</span>
-          <h1>元件库</h1>
-          <p>完整型号，清晰参数。每个元件都有自己的位置。</p>
-        </div>
-        <button className="primary" onClick={() => setEditing({ machine, type: 'GFA' })}>
-          <Plus size={17} />
-          添加元件
-        </button>
-      </div>
-      <div className="filters">
+      <div className="page-toolbar" role="toolbar" aria-label="元件库工具栏">
+        <h1>元件库</h1>
         <MachineSwitch
           machines={data.machines}
           value={machine}
@@ -60,13 +50,17 @@ export default function Components({ data, onSave, onDelete }) {
             <option key={t}>{t}</option>
           ))}
         </select>
+        <span className="toolbar-count">{rows.length} 型号</span>
+        <button
+          className="primary toolbar-end"
+          onClick={() => setEditing({ machine, type: 'GFA' })}
+        >
+          <Plus size={15} />
+          添加元件
+        </button>
       </div>
       <div className={'catalog-layout ' + (!item ? 'no-detail' : '')}>
         <div className="panel">
-          <div className="section-head">
-            <h2>元件清单</h2>
-            <span>{rows.length} 个型号</span>
-          </div>
           <div className="table-scroll">
             <table>
               <thead>
@@ -124,7 +118,6 @@ export default function Components({ data, onSave, onDelete }) {
           {!rows.length && (
             <EmptyState icon={Box} title="没有匹配元件" description="尝试其他型号、类型或机器。" />
           )}
-          <div className="table-footer">型号与库存分别管理，历史记录保留</div>
         </div>
         {item && (
           <aside className="panel component-detail" key={item.id}>
@@ -136,7 +129,6 @@ export default function Components({ data, onSave, onDelete }) {
               <span>{machine}CC</span>
             </div>
             <div className="detail-body">
-              <span className="eyebrow">{item.type} ELEMENT</span>
               <h3>{item.name}</h3>
               <ScrewPreview item={item} spec={data.machines[machine]} />
               <dl className="parameter-list">

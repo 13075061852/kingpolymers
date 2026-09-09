@@ -50,6 +50,13 @@ export default function BarrelPanel({ data, design, edit, notify, readOnly = fal
           </button>
         </div>
       </div>
+      <div className="barrel-columns" aria-hidden="true">
+        <span>位置</span>
+        <span>机筒</span>
+        <span>节长</span>
+        <span>累计</span>
+        <span>操作</span>
+      </div>
       <div className="barrel-rows">
         {rows.map((row, i) => (
           <div className="barrel-row" key={row.uid || row.pos}>
@@ -57,10 +64,12 @@ export default function BarrelPanel({ data, design, edit, notify, readOnly = fal
             <button className="barrel-name" onClick={() => setConfig({ index: i, row })}>
               <strong>{row.name}</strong>
               <small>
-                {row.length} mm · {row.annotation || '普通机筒'}
+                {row.annotation}
                 {row.cap !== 'open' ? ' · ' + capNames[row.cap] : ''}
               </small>
             </button>
+            <span className="row-length numeric">{row.length}</span>
+            <span className="row-end numeric">{row.mm}</span>
             <div className="mini-actions">
               <button
                 aria-label={`上移机筒 ${row.pos}`}

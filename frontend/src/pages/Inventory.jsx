@@ -37,18 +37,8 @@ export default function Inventory({ data, onAdjust, onHistory }) {
   }
   return (
     <section className="page">
-      <div className="page-title">
-        <div>
-          <span className="eyebrow">INVENTORY</span>
-          <h1>元件库存</h1>
-          <p>以实际单件计数，每个组合位置需要 2 件。</p>
-        </div>
-        <button onClick={onHistory}>
-          <History size={17} />
-          出入库记录
-        </button>
-      </div>
-      <div className="filters">
+      <div className="page-toolbar" role="toolbar" aria-label="库存工具栏">
+        <h1>元件库存</h1>
         <MachineSwitch
           machines={data.machines}
           value={machine}
@@ -56,6 +46,11 @@ export default function Inventory({ data, onAdjust, onHistory }) {
           label="库存机型"
         />
         <SearchField value={query} onChange={setQuery} placeholder="搜索元件型号" />
+        <span className="toolbar-count">2 件 / 套</span>
+        <button className="toolbar-end" onClick={onHistory}>
+          <History size={15} />
+          出入库记录
+        </button>
       </div>
       <div className="panel">
         <div className="table-scroll">
@@ -111,9 +106,6 @@ export default function Inventory({ data, onAdjust, onHistory }) {
       </div>
       {item && (
         <Modal drawer title="调整库存" onClose={() => setItem(null)} busy={saving}>
-          <span className="eyebrow">
-            {item.machine}CC / {item.type}
-          </span>
           <h3 className="drawer-model">{item.name}</h3>
           <div className="stock-summary">
             <span>当前库存</span>

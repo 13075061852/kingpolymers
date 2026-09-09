@@ -6,13 +6,7 @@ import {
   Package,
   Settings as SettingsIcon,
   LogOut,
-  Check,
-  X,
-  Menu,
-  PanelLeftClose,
-  ChevronRight,
   Monitor,
-  UserRound,
   LoaderCircle,
 } from 'lucide-react';
 import { api, setSession } from './lib/api.js';
@@ -45,7 +39,6 @@ export default function App() {
 }
 function Workspace() {
   const ask = useConfirm();
-  const [collapsed, setCollapsed] = useState(false);
   const working = useRef(false);
   const account = useRef(null);
   const [data, setData] = useState(null),
@@ -253,9 +246,9 @@ function Workspace() {
   return (
     <>
       <div
-        className={`app-shell ${print ? 'printing' : ''} ${collapsed ? 'sidebar-collapsed' : ''}`}
+        className={`app-shell ${print ? 'printing' : ''} ${page === 'designer' ? 'design-active' : ''}`}
       >
-        <aside className="sidebar">
+        <header className="app-topbar">
           <a
             className="brand"
             href="#designer"
@@ -265,11 +258,8 @@ function Workspace() {
             }}
           >
             <img src="/brand-logo.svg" alt="KP" />
-            <span>
-              kingpolymer<small>ENGINEERING WORKSPACE</small>
-            </span>
+            <span>kingpolymer</span>
           </a>
-          <span className="sidebar-label">工作空间</span>
           <nav aria-label="主导航">
             {pages.map(([key, label, Icon]) => (
               <button
@@ -279,52 +269,24 @@ function Workspace() {
                 className={page === key ? 'active' : ''}
                 onClick={() => setPage(key)}
               >
-                <Icon size={20} />
+                <Icon size={15} />
                 <span>{label}</span>
                 {key === 'designer' && editor.dirty && <i className="unsaved-dot" />}
               </button>
             ))}
           </nav>
-          <div className="sidebar-bottom">
-            <div className="sidebar-user">
-              <span className="avatar">
-                <UserRound size={19} />
-              </span>
-              <div>
-                <strong>{data.auth.enabled ? data.auth.username : '本地工作台'}</strong>
-                <small>{data.auth.enabled ? '工程账户' : '仅限本机访问'}</small>
-              </div>
-            </div>
+          <div className="account">
+            <Monitor size={14} />
+            <span>{data.auth.enabled ? data.auth.username : '本地'}</span>
             {data.auth.enabled && (
-              <button className="logout-button" onClick={logout} title="退出登录">
-                <LogOut size={17} />
+              <button onClick={logout} title="退出登录">
+                <LogOut size={14} />
                 <span>退出登录</span>
               </button>
             )}
-            <button
-              className="collapse-button"
-              onClick={() => setCollapsed((v) => !v)}
-              aria-label={collapsed ? '展开导航' : '收起导航'}
-              aria-expanded={!collapsed}
-            >
-              {collapsed ? <Menu size={18} /> : <PanelLeftClose size={18} />}
-              <span>收起导航</span>
-            </button>
           </div>
-        </aside>
+        </header>
         <div className="workspace">
-          <header className="workspace-topbar">
-            <div className="breadcrumb">
-              <span>工作空间</span>
-              <ChevronRight size={14} />
-              <strong>{pages.find((p) => p[0] === page)?.[1]}</strong>
-            </div>
-            <div className="account">
-              <span className="connection-dot" />
-              <span>{data.auth.enabled ? '工程工作台' : '本地工作台'}</span>
-              <Monitor size={15} />
-            </div>
-          </header>
           <main className="workspace-content" id="main-content" inert={busy || undefined}>
             <div className="page-transition" key={page}>
               {page === 'designer' && (
@@ -406,10 +368,6 @@ function Workspace() {
               )}
             </div>
           </main>
-          <footer className="app-footer">
-            <span>kingpolymer · 双螺杆工程工作台</span>
-            <span>工程数据保存在当前服务中</span>
-          </footer>
         </div>
       </div>
       {busy && (

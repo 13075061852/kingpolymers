@@ -5,7 +5,11 @@ const nav = (page, name) =>
   page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name, exact: true });
 async function screenshot(page, name) {
   await mkdir(captures, { recursive: true });
-  await page.screenshot({ path: captures + '/' + name + '.png', fullPage: true });
+  await page.screenshot({
+    path: captures + '/' + name + '.png',
+    fullPage: true,
+    animations: 'disabled',
+  });
 }
 async function noOverflow(page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -23,7 +27,7 @@ test('desktop design, empty state, 3D catalog, inventory and settings', async ({
   await expect(page.locator('.sequence-row')).not.toHaveCount(0);
   await screenshot(page, '02-designer');
   await nav(page, '项目方案').click();
-  await expect(page.getByText('从第一个方案开始')).toBeVisible();
+  await expect(page.getByText('暂无方案')).toBeVisible();
   await screenshot(page, '03-projects-empty');
   await nav(page, '元件库').click();
   await expect(page.getByRole('button', { name: '向左旋转' })).toBeVisible({ timeout: 15000 });
@@ -37,7 +41,7 @@ test('desktop design, empty state, 3D catalog, inventory and settings', async ({
   await screenshot(page, '05-inventory');
   await page.getByRole('button', { name: '取消', exact: true }).click();
   await nav(page, '设置').click();
-  await expect(page.getByText('专属于这台电脑')).toBeVisible();
+  await expect(page.getByText('本地模式 · 无需登录')).toBeVisible();
   await page.getByRole('button', { name: '立即备份', exact: true }).click();
   await expect(page.getByText('本次备份已完成')).toBeVisible();
   await screenshot(page, '06-settings');
@@ -196,7 +200,7 @@ test('real drag, keyboard undo, PNG and Excel downloads', async ({ page }) => {
     expect(bytes.length).toBeGreaterThan(1000);
     if (extension === 'png') {
       expect(bytes.readUInt32BE(16)).toBe(2400);
-      expect(bytes.readUInt32BE(20)).toBe(632);
+      expect(bytes.readUInt32BE(20)).toBe(480);
     } else expect(bytes.subarray(0, 2).toString()).toBe('PK');
     await page.getByRole('button', { name: '关闭', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -278,4 +282,78 @@ test('duplicate component error stays above the dialog and keeps user input', as
   await expect(page.getByLabel('长度 / mm', { exact: true })).toHaveValue('999');
   await page.getByRole('button', { name: '取消', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('compact desktop stays in one viewport with independent panes and a working splitter', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '使用标准模板' }).click();
+  for (const viewport of [
+    { width: 1366, height: 768 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const panes = await page.locator('.editor-grid > .panel').evaluateAll((elements) =>
+      elements.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, bottom: r.bottom, width: r.width };
+      }),
+    );
+    expect(panes).toHaveLength(3);
+    expect(Math.max(...panes.map((p) => p.y)) - Math.min(...panes.map((p) => p.y))).toBeLessThan(2);
+    expect(panes.every((p) => p.bottom <= viewport.height + 1 && p.width >= 230)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(
+      true,
+    );
+    expect(
+      await page.locator('.workspace-content').evaluate((el) => el.scrollHeight <= el.clientHeight),
+    ).toBe(true);
+    await expect(page.getByRole('button', { name: '保存方案', exact: true })).toBeInViewport();
+    await expect(page.locator('.sequence-row').nth(7)).toBeInViewport();
+    await screenshot(page, 'compact-designer-' + viewport.width);
+    const before = await page.locator('.diagram-panel').boundingBox();
+    const splitter = page.getByRole('separator', { name: '调整画布高度' });
+    await splitter.focus();
+    await page.keyboard.press('ArrowUp');
+    expect((await page.locator('.diagram-panel').boundingBox()).height).toBeLessThan(
+      before.height - 10,
+    );
+    const handle = await splitter.boundingBox();
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + handle.width / 2, handle.y - 45, { steps: 5 });
+    await page.mouse.up();
+    expect((await page.locator('.diagram-panel').boundingBox()).height).toBeLessThan(
+      before.height - 40,
+    );
+    await splitter.dblclick();
+    const original = await page.locator('.barrel-rows').evaluate((el) => el.scrollTop);
+    await page.locator('.sequence-list').evaluate((el) => {
+      el.scrollTop = 250;
+    });
+    expect(await page.locator('.sequence-list').evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    expect(await page.locator('.barrel-rows').evaluate((el) => el.scrollTop)).toBe(original);
+    await page.locator('.sequence-list').evaluate((el) => {
+      el.scrollTop = 0;
+    });
+    await nav(page, '元件库').click();
+    const toolbar = await page.getByRole('toolbar', { name: '元件库工具栏' }).boundingBox();
+    expect(toolbar.height).toBeLessThan(45);
+    await expect(page.getByRole('button', { name: '添加元件', exact: true })).toBeInViewport();
+    await expect(page.getByRole('button', { name: '编辑元件', exact: true })).toBeInViewport();
+    expect(
+      await page.locator('.workspace-content').evaluate((el) => el.scrollHeight <= el.clientHeight),
+    ).toBe(true);
+    await screenshot(page, 'compact-components-' + viewport.width);
+    for (const name of ['库存', '项目方案', '设置']) {
+      await nav(page, name).click();
+      expect(
+        await page
+          .locator('.workspace-content')
+          .evaluate((el) => el.scrollHeight <= el.clientHeight),
+      ).toBe(true);
+    }
+    await nav(page, '组合设计').click();
+  }
 });

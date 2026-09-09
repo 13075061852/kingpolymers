@@ -23,20 +23,20 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
         className="drawing"
         role="img"
         aria-label="螺杆和机筒组合图"
-        viewBox="0 0 1200 316"
-        style={{ width: `${zoom * 100}%`, minWidth: 720 }}
+        viewBox="0 0 1200 240"
+        style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%`, minWidth: 720 }}
         xmlns="http://www.w3.org/2000/svg"
       >
-        <rect width="1200" height="316" fill="white" />
-        <text x="60" y="28" fontSize="15" fill="#223c4b">
+        <rect width="1200" height="240" fill="white" />
+        <text x="60" y="20" fontSize="12" fill="#223c4b">
           {spec.name} · 螺杆 {check.total} / {check.target} mm
         </text>
-        <text x="60" y="48" fontSize="10" fill="#71818c">
-          {look.note()} · 参数化工程示意
+        <text x="60" y="36" fontSize="10" fill="#71818c">
+          {look.note()}
         </text>
         <defs>
           <clipPath id={`${id}-axis`}>
-            <rect x="0" y="55" width={1140} height="230" />
+            <rect x="0" y="40" width={1140} height="160" />
           </clipPath>
         </defs>
         <g clipPath={look.referenceView() ? `url(#${id}-axis)` : undefined}>
@@ -46,10 +46,10 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
               <g key={row.uid || row.pos}>
                 <g
                   dangerouslySetInnerHTML={{
-                    __html: BarrelVisuals.module(row, x, row.length * scale, 110, height),
+                    __html: BarrelVisuals.module(row, x, row.length * scale, 82, height),
                   }}
                 />
-                <text x={x + (row.length * scale) / 2} y="83" textAnchor="middle" fontSize="10">
+                <text x={x + (row.length * scale) / 2} y="51" textAnchor="middle" fontSize="10">
                   {row.pos}
                 </text>
               </g>
@@ -74,7 +74,7 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
                       pad: 0,
                       stretch: true,
                       thumbnail: true,
-                      layout: `x="${x}" y="112" width="${w}" height="${height}"`,
+                      layout: `x="${x}" y="84" width="${w}" height="${height}"`,
                     }),
                   }}
                 />
@@ -86,14 +86,14 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
                       pad: 0,
                       stretch: true,
                       thumbnail: true,
-                      layout: `x="${x}" y="185" width="${w}" height="${height}"`,
+                      layout: `x="${x}" y="144" width="${w}" height="${height}"`,
                     }),
                   }}
                 />
                 {(selected === span.index || bad) && (
                   <rect
                     x={x}
-                    y="108"
+                    y="80"
                     width={Math.max(w, 2)}
                     height={height + 8}
                     fill="none"
@@ -101,37 +101,37 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
                     strokeWidth="2"
                   />
                 )}
-                <rect x={x} y="103" width={Math.max(w, 3)} height={height + 22} fill="transparent">
+                <rect x={x} y="75" width={Math.max(w, 3)} height={height + 22} fill="transparent">
                   <title>
                     {c.name} · {c.length} mm
                   </title>
                 </rect>
-                <text x={x + w / 2} y={215 + height} textAnchor="middle" fontSize="8">
+                <text x={x + w / 2} y={155 + height} textAnchor="middle" fontSize="8">
                   {span.index + 1}
                 </text>
               </g>
             );
           })}
         </g>
-        <text x="16" y="130" fontSize="10" fill="#8195a3">
+        <text x="16" y="100" fontSize="10" fill="#8195a3">
           A 轴
         </text>
-        <text x="16" y="203" fontSize="10" fill="#8195a3">
+        <text x="16" y="161" fontSize="10" fill="#8195a3">
           B 轴
         </text>
-        <line x1="60" x2="1140" y1="263" y2="263" stroke="#a8b6be" />
+        <line x1="60" x2="1140" y1="196" y2="196" stroke="#a8b6be" />
         {Array.from({ length: 7 }, (_, i) => i).map((i) => (
           <g key={i}>
-            <line x1={1140 - i * 180} x2={1140 - i * 180} y1="259" y2="268" stroke="#91a3ad" />
-            <text x={1140 - i * 180} y="280" textAnchor="middle" fontSize="9" fill="#5d7480">
+            <line x1={1140 - i * 180} x2={1140 - i * 180} y1="192" y2="201" stroke="#91a3ad" />
+            <text x={1140 - i * 180} y="213" textAnchor="middle" fontSize="9" fill="#5d7480">
               {Math.round((extent * i) / 6)}
             </text>
           </g>
         ))}
-        <text x="60" y="298" fontSize="10" fill="#7a8992">
+        <text x="60" y="232" fontSize="10" fill="#7a8992">
           出料端
         </text>
-        <text x="1140" y="298" textAnchor="end" fontSize="10" fill="#7a8992">
+        <text x="1140" y="232" textAnchor="end" fontSize="10" fill="#7a8992">
           进料端 · mm
         </text>
       </svg>

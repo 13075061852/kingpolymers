@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from 'lucide-react';
+import WorkspaceSplitter from '../components/WorkspaceSplitter.jsx';
 import Diagram from '../components/Diagram.jsx';
 import Modal from '../components/Modal.jsx';
 import { useConfirm } from '../components/ConfirmProvider.jsx';
@@ -155,40 +156,89 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
   });
   return (
     <section className="designer">
-      <div className="workspace-head">
-        <div>
-          <span className="eyebrow">DESIGN WORKSPACE</span>
-          <h1>
-            {design.metadata.drawing_name || '新建组合方案'}
-            <span className={`badge ${dirty ? 'draft' : ''}`}>
-              {dirty ? '未保存' : design.id ? '已保存' : '新方案'}
-            </span>
-          </h1>
-        </div>
-        <div className="row-actions">
-          <button onClick={() => replace(emptyDesign(design.machine))}>
-            <Plus size={16} />
-            新建
-          </button>
-          <button onClick={onProjects}>
-            <FolderOpen size={16} />
-            打开
-          </button>
-          <button onClick={() => onSave(true)}>另存</button>
+      <div className="workspace-tools" role="toolbar" aria-label="方案工具栏">
+        <select
+          aria-label="当前机型"
+          value={design.machine}
+          onChange={(e) => replace(emptyDesign(e.target.value))}
+        >
+          {Object.entries(data.machines).map(([key, s]) => (
+            <option value={key} key={key}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        <span className="machine-summary">
+          {summary.process_d}D / {summary.sections} 节
+        </span>
+        <span className="divider" />
+        <button onClick={() => replace(emptyDesign(design.machine))}>
+          <Plus size={15} />
+          新建
+        </button>
+        <button onClick={onProjects}>
+          <FolderOpen size={15} />
+          打开
+        </button>
+        <button
+          className="primary"
+          title="保存方案 · Ctrl+S"
+          disabled={readOnly}
+          onClick={() => onSave(false)}
+        >
+          <Save size={15} />
+          保存方案
+        </button>
+        <button onClick={() => onSave(true)}>另存</button>
+        <span className="divider" />
+        <button onClick={() => setModal('metadata')}>
+          <FileText size={15} />
+          图纸资料
+        </button>
+        <button onClick={() => setModal('templates')}>历史模板</button>
+        {!design.sequence.length && (
           <button
-            className="primary"
-            title="保存方案 · Ctrl+S"
-            disabled={readOnly}
-            onClick={() => onSave(false)}
+            onClick={() => {
+              const t = data.templates.find((t) => t.machine === design.machine && t.is_default);
+              if (t)
+                replace({
+                  ...emptyDesign(design.machine),
+                  sequence: t.sequence,
+                  metadata: {
+                    ...emptyDesign().metadata,
+                    drawing_name: t.name,
+                    version: t.version || '',
+                  },
+                });
+              else setModal('templates');
+            }}
           >
-            <Save size={16} />
-            保存方案
+            使用标准模板
           </button>
-        </div>
+        )}
+        <button onClick={() => file.current.click()}>
+          <Upload size={15} />
+          导入
+        </button>
+        <input
+          ref={file}
+          type="file"
+          accept=".pdf,.xlsx,.xlsm,.json"
+          hidden
+          onChange={importFile}
+        />
+        <button onClick={() => setModal('export')}>
+          <Download size={15} />
+          导出
+        </button>
+        <button onClick={() => onPrint(reportHtml(data, design))}>
+          <FileText size={15} />
+          工程图 / PDF
+        </button>
       </div>
       {readOnly && (
         <div className="readonly-notice">
-          <span>已发布方案 · 编辑已锁定，库存已按发布记录处理</span>
+          <span>已发布 · 只读</span>
           <button
             onClick={() =>
               replace({
@@ -206,46 +256,6 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
           </button>
         </div>
       )}
-      <div className="workspace-tools">
-        <div className="row-actions">
-          <select
-            aria-label="当前机型"
-            value={design.machine}
-            onChange={(e) => replace(emptyDesign(e.target.value))}
-          >
-            {Object.entries(data.machines).map(([key, s]) => (
-              <option value={key} key={key}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <span className="muted">
-            {summary.process_d}D / {summary.sections} 节
-          </span>
-        </div>
-        <div className="row-actions">
-          <button onClick={() => setModal('metadata')}>
-            <FileText size={15} />
-            图纸资料
-          </button>
-          <button onClick={() => setModal('templates')}>历史模板</button>
-          <button onClick={() => file.current.click()}>
-            <Upload size={15} />
-            导入
-          </button>
-          <input
-            ref={file}
-            type="file"
-            accept=".pdf,.xlsx,.xlsm,.json"
-            hidden
-            onChange={importFile}
-          />
-          <button onClick={() => setModal('export')}>
-            <Download size={15} />
-            导出
-          </button>
-        </div>
-      </div>
       <section className="panel diagram-panel">
         <div className="diagram-tools">
           <div className="row-actions">
@@ -282,6 +292,14 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
               <ZoomIn size={16} />
             </button>
           </div>
+          <div className="drawing-title">
+            <h1 title={design.metadata.drawing_name}>
+              {design.metadata.drawing_name || '新建组合方案'}
+            </h1>
+            <span className={`badge ${dirty ? 'draft' : ''}`}>
+              {dirty ? '未保存' : design.id ? '已保存' : '新方案'}
+            </span>
+          </div>
           <div className="row-actions">
             <span className="legend">
               {Object.entries(ComponentModels.colors)
@@ -299,33 +317,6 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
             </button>
           </div>
         </div>
-        {!design.sequence.length && (
-          <div className="welcome-design">
-            <div>
-              <strong>开始一套新组合</strong>
-              <p>从标准模板开始，或在下方逐个添加元件。</p>
-            </div>
-            <button
-              className="primary"
-              onClick={() => {
-                const t = data.templates.find((t) => t.machine === design.machine && t.is_default);
-                if (t)
-                  replace({
-                    ...emptyDesign(design.machine),
-                    sequence: t.sequence,
-                    metadata: {
-                      ...emptyDesign().metadata,
-                      drawing_name: t.name,
-                      version: t.version || '',
-                    },
-                  });
-                else setModal('templates');
-              }}
-            >
-              使用标准模板
-            </button>
-          </div>
-        )}
         <Diagram
           data={data}
           design={design}
@@ -347,13 +338,14 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
           <button onClick={() => setModal('validation')}>查看校验</button>
         </div>
       </section>
+      <WorkspaceSplitter />
       <div className="editor-grid">
         <section className="panel catalog-panel">
           <div className="section-head">
             <div>
-              <h2>元件选择</h2>
+              <h2>元件库</h2>
               <span>
-                {design.machine} 机专用 · {items.length} 个型号
+                {design.machine}CC · {items.length} 型号
               </span>
             </div>
           </div>
@@ -420,7 +412,6 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
               </div>
             ))}
           </div>
-          <p className="panel-note">点击加入，或拖入右侧安装顺序。图形为参数示意。</p>
         </section>
         <section className="panel sequence-panel">
           <div className="section-head">
@@ -447,6 +438,13 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
               <Trash2 size={15} />
               清空
             </button>
+          </div>
+          <div className="sequence-columns" aria-hidden="true">
+            <span>位置</span>
+            <span>型号</span>
+            <span>长度</span>
+            <span>累计</span>
+            <span>操作</span>
           </div>
           <div
             className="sequence-list"
@@ -489,10 +487,11 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
                   <span className="position">{String(index + 1).padStart(2, '0')}</span>
                   <div className="sequence-name">
                     <strong>{c.name}</strong>
-                    <small>
-                      {c.length} mm · 累计 {Math.round(span.end + (spec.position_origin || 0))} mm
-                    </small>
                   </div>
+                  <span className="row-length numeric">{c.length}</span>
+                  <span className="row-end numeric">
+                    {Math.round(span.end + (spec.position_origin || 0))}
+                  </span>
                   <div className="mini-actions">
                     <button
                       aria-label={`上移元件 ${index + 1}`}
@@ -547,9 +546,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
               }}
             >
               <Plus size={22} />
-              <span>
-                {design.sequence.length ? '拖入此处追加元件' : '从元件库点击或拖入，开始设计'}
-              </span>
+              <span>{design.sequence.length ? '追加元件' : '暂无元件'}</span>
             </div>
           </div>
           {selected >= 0 && selected < design.sequence.length && (
@@ -611,7 +608,6 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
       )}
       {modal === 'templates' && (
         <Modal title="从历史模板创建" onClose={() => setModal(null)} wide>
-          <p className="muted">模板是业务数据，用于创建新方案。</p>
           <div className="template-list">
             {data.templates
               .filter((t) => t.machine === design.machine)
@@ -773,7 +769,6 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
           <ScrewPreview item={modal.component} spec={spec} />
           <p>{ComponentModels.describe(modal.component)}</p>
           <p>所属机型：{spec.name}</p>
-          <p className="muted">显示名称规范化，保存仍使用原始型号，不合并库存或历史记录。</p>
         </Modal>
       )}
     </section>
