@@ -585,6 +585,15 @@ svg {
 .drawing {
   display: block;
 }
+.drawing[data-diagram-dragging='true'] {
+  cursor: grabbing;
+  user-select: none;
+}
+.drawing [data-diagram-sort-id]:focus-visible [data-element-hitbox] {
+  stroke: var(--teal);
+  stroke-width: 1.5px;
+  stroke-dasharray: 3 2;
+}
 .validation-bar {
   display: flex;
   align-items: center;

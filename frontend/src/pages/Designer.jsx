@@ -326,6 +326,9 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
           design={design}
           selected={selected}
           onSelect={setSelected}
+          onMove={move}
+          elementIds={rowKeys.ids}
+          readOnly={readOnly}
           zoom={zoom}
           svgRef={svg}
         />

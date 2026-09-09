@@ -1,11 +1,23 @@
-import { memo, useId } from 'react';
+import { memo, useCallback, useId, useRef } from 'react';
 import ComponentModels from '../domain/component-models.js';
 import BarrelModels from '../domain/barrel-models.js';
 import BarrelVisuals from '../domain/barrel-visuals.js';
 import { appearance, component, validate } from '../domain/design.js';
+import useDiagramSort from '../hooks/useDiagramSort.js';
 
-function Diagram({ data, design, selected, onSelect, zoom = 1, svgRef }) {
+function Diagram({
+  data,
+  design,
+  selected,
+  onSelect,
+  onMove,
+  elementIds = [],
+  readOnly = false,
+  zoom = 1,
+  svgRef,
+}) {
   const id = useId().replace(/:/g, ''),
+    root = useRef(null),
     spec = data.machines[design.machine],
     check = validate(data, design);
   const rows = BarrelModels.rows(design.machine, spec, design.ports),
@@ -16,22 +28,50 @@ function Diagram({ data, design, selected, onSelect, zoom = 1, svgRef }) {
   const scale = 1080 / Math.max(extent, 1),
     right = 1140 + offset * scale,
     height = spec.diameter * scale,
-    boreHeight = height * 2 + 7,
-    secondAxisY = 82 + height + 7,
+    axisY = 82,
     barrelEnd = right - spec.entry_offset * scale,
     fullEntry = !look.referenceView() && rows[0]?.role === 'feed';
+  const elements = check.spans.map((span) => {
+    const c = component(data, design, span.name);
+    return {
+      ...span,
+      id: elementIds[span.index] || `diagram-element-${span.index}`,
+      component: c,
+      x: right - (span.end + spec.entry_offset) * scale,
+      width: c.length * scale,
+      bad: check.violations.some((violation) => violation.index === span.index),
+    };
+  });
+  const sort = useDiagramSort({
+    root,
+    items: elements,
+    disabled: readOnly,
+    visibleRight: look.referenceView() ? barrelEnd : null,
+    onMove,
+    onSelect,
+  });
+  const attachSvg = useCallback(
+    (node) => {
+      root.current = node;
+      if (typeof svgRef === 'function') svgRef(node);
+      else if (svgRef) svgRef.current = node;
+    },
+    [svgRef],
+  );
   return (
     <div className="drawing-scroll">
       <svg
-        ref={svgRef}
+        ref={attachSvg}
         className="drawing"
-        role="img"
-        aria-label="螺杆和机筒组合图"
-        viewBox="0 0 1200 240"
+        role="group"
+        aria-label="螺杆侧视单轴组合图"
+        data-axis-view="single"
+        data-diagram-dragging={sort.drag?.active || undefined}
+        viewBox="0 0 1200 212"
         style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%`, minWidth: 720 }}
         xmlns="http://www.w3.org/2000/svg"
       >
-        <rect width="1200" height="240" fill="white" />
+        <rect width="1200" height="212" fill="white" />
         <text x="60" y="20" fontSize="12" fill="#223c4b">
           {spec.name} · 螺杆 {check.total} / {check.target} mm
         </text>
@@ -40,17 +80,17 @@ function Diagram({ data, design, selected, onSelect, zoom = 1, svgRef }) {
         </text>
         <defs>
           <clipPath id={`${id}-axis`}>
-            <rect x="0" y="40" width={1140} height="160" />
+            <rect x="0" y="40" width={1140} height="124" />
           </clipPath>
         </defs>
         <g clipPath={look.referenceView() ? `url(#${id}-axis)` : undefined}>
-          {rows.map((row, i) => {
+          {rows.map((row) => {
             const x = right - (row.mm + spec.entry_offset) * scale;
             return (
               <g key={row.uid || row.pos}>
                 <g
                   dangerouslySetInnerHTML={{
-                    __html: BarrelVisuals.module(row, x, row.length * scale, 82, boreHeight),
+                    __html: BarrelVisuals.module(row, x, row.length * scale, axisY, height),
                   }}
                 />
                 <text x={x + (row.length * scale) / 2} y="51" textAnchor="middle" fontSize="10">
@@ -65,100 +105,121 @@ function Diagram({ data, design, selected, onSelect, zoom = 1, svgRef }) {
                 __html: BarrelVisuals.inlet(
                   barrelEnd,
                   spec.entry_offset * scale,
-                  82,
-                  boreHeight,
+                  axisY,
+                  height,
                   spec.entry_offset,
                 ),
               }}
             />
           )}
-          {check.spans.map((span) => {
-            const c = component(data, design, span.name),
-              x = right - (span.end + spec.entry_offset) * scale,
-              w = c.length * scale,
-              bad = check.violations.some((v) => v.index === span.index);
+          {elements.map((item) => {
+            const hitWidth = Math.max(item.width, 8),
+              hitX = item.x - (hitWidth - item.width) / 2,
+              showNumber =
+                item.width >= 9 || selected === item.index || sort.drag?.from === item.index;
             return (
               <g
-                key={span.index}
-                data-element-index={span.index}
-                onClick={() => onSelect?.(span.index)}
-                style={{ cursor: 'pointer' }}
+                key={item.id}
+                data-element-index={item.index}
+                role="button"
+                tabIndex="0"
+                aria-label={`位置 ${item.index + 1}，${item.component.name}，拖拽调整顺序`}
+                {...sort.elementProps(item.index)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSelect?.(item.index);
+                  }
+                }}
               >
                 <g
                   dangerouslySetInnerHTML={{
-                    __html: ComponentModels.symbol(c, spec, {
-                      id: `${id}-element-${span.index}`,
-                      color: look.color(c),
+                    __html: ComponentModels.symbol(item.component, spec, {
+                      id: `${id}-element-${item.id}`,
+                      color: look.color(item.component),
                       pad: 0,
                       stretch: true,
                       thumbnail: true,
-                      layout: `x="${x}" y="82" width="${w}" height="${height}"`,
+                      layout: `x="${item.x}" y="${axisY}" width="${item.width}" height="${height}"`,
                     }),
                   }}
                 />
-                <g
-                  dangerouslySetInnerHTML={{
-                    __html: ComponentModels.symbol(c, spec, {
-                      id: `${id}-paired-${span.index}`,
-                      color: look.color(c),
-                      pad: 0,
-                      stretch: true,
-                      thumbnail: true,
-                      layout: `x="${x}" y="${secondAxisY}" width="${w}" height="${height}"`,
-                    }),
-                  }}
-                />
-                {(selected === span.index || bad) && (
+                {(selected === item.index || item.bad) && (
                   <rect
-                    x={x}
-                    y="80"
-                    width={Math.max(w, 2)}
-                    height={boreHeight + 4}
+                    x={item.x}
+                    y={axisY - 2}
+                    width={Math.max(item.width, 2)}
+                    height={height + 4}
                     fill="none"
-                    stroke={bad ? '#d94747' : '#1d7d86'}
+                    stroke={item.bad ? '#d94747' : '#1d7d86'}
                     strokeWidth="2"
+                    pointerEvents="none"
                   />
                 )}
                 <rect
-                  x={x}
-                  y="80"
-                  width={Math.max(w, 3)}
-                  height={boreHeight + 4}
+                  data-element-hitbox="true"
+                  x={hitX}
+                  y={axisY - 5}
+                  width={hitWidth}
+                  height={height + 10}
                   fill="transparent"
                 >
                   <title>
-                    {c.name} · {c.length} mm
+                    {item.component.name} · {item.component.length} mm
                   </title>
                 </rect>
-                <text x={x + w / 2} y={155 + height} textAnchor="middle" fontSize="8">
-                  {span.index + 1}
-                </text>
+                {showNumber && (
+                  <text
+                    x={item.x + item.width / 2}
+                    y={axisY + height + 27}
+                    textAnchor="middle"
+                    fontSize="8"
+                    pointerEvents="none"
+                  >
+                    {item.index + 1}
+                  </text>
+                )}
               </g>
             );
           })}
+          {sort.slot && (
+            <rect
+              data-diagram-drop-slot="true"
+              x={sort.slot.x}
+              y={axisY - 3}
+              width={Math.max(sort.slot.width, 2)}
+              height={height + 6}
+              rx="2"
+              fill="#1d7d8614"
+              stroke="#168a94"
+              strokeWidth="1.5"
+              strokeDasharray="4 2"
+              pointerEvents="none"
+            />
+          )}
         </g>
         {look.referenceView() && (
-          <g dangerouslySetInnerHTML={{ __html: look.plate(barrelEnd, 82, boreHeight) }} />
+          <g dangerouslySetInnerHTML={{ __html: look.plate(barrelEnd, axisY, height) }} />
         )}
-        <text x="16" y={82 + height * 0.7} fontSize="10" fill="#8195a3">
-          A 轴
-        </text>
-        <text x="16" y={secondAxisY + height * 0.7} fontSize="10" fill="#8195a3">
-          B 轴
-        </text>
-        <line x1="60" x2="1140" y1="196" y2="196" stroke="#a8b6be" />
-        {Array.from({ length: 7 }, (_, i) => i).map((i) => (
-          <g key={i}>
-            <line x1={1140 - i * 180} x2={1140 - i * 180} y1="192" y2="201" stroke="#91a3ad" />
-            <text x={1140 - i * 180} y="213" textAnchor="middle" fontSize="9" fill="#5d7480">
-              {Math.round((extent * i) / 6)}
+        <line x1="60" x2="1140" y1="166" y2="166" stroke="#a8b6be" />
+        {Array.from({ length: 7 }, (_, index) => index).map((index) => (
+          <g key={index}>
+            <line
+              x1={1140 - index * 180}
+              x2={1140 - index * 180}
+              y1="162"
+              y2="171"
+              stroke="#91a3ad"
+            />
+            <text x={1140 - index * 180} y="183" textAnchor="middle" fontSize="9" fill="#5d7480">
+              {Math.round((extent * index) / 6)}
             </text>
           </g>
         ))}
-        <text x="60" y="232" fontSize="10" fill="#7a8992">
+        <text x="60" y="204" fontSize="10" fill="#7a8992">
           出料端
         </text>
-        <text x="1140" y="232" textAnchor="end" fontSize="10" fill="#7a8992">
+        <text x="1140" y="204" textAnchor="end" fontSize="10" fill="#7a8992">
           进料端 · mm
         </text>
       </svg>
