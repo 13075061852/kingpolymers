@@ -19,6 +19,8 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from 'lucide-react';
+import useAnimatedSort from '../hooks/useAnimatedSort.js';
+import useSequenceKeys from '../hooks/useSequenceKeys.js';
 import WorkspaceSplitter from '../components/WorkspaceSplitter.jsx';
 import Diagram from '../components/Diagram.jsx';
 import Modal from '../components/Modal.jsx';
@@ -46,7 +48,6 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
     }
     applyEdit(update);
   };
-  const [dragOver, setDragOver] = useState(-1);
   const [query, setQuery] = useState(''),
     [type, setType] = useState(''),
     [selected, setSelected] = useState(-1),
@@ -54,6 +55,14 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
     [modal, setModal] = useState(null);
   const file = useRef(null),
     svg = useRef(null);
+  const rowKeys = useSequenceKeys(design.sequence);
+  const sort = useAnimatedSort({
+    ids: rowKeys.ids,
+    names: design.sequence,
+    disabled: readOnly,
+    onMove: move,
+    onInsert: add,
+  });
   const items = data.components.filter(
     (c) =>
       c.machine === design.machine &&
@@ -77,32 +86,26 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
     return true;
   };
   function add(name, index = design.sequence.length) {
+    if (readOnly) return;
+    sort.capture();
+    rowKeys.insert(name, index);
     edit((d) => d.sequence.splice(index, 0, name));
     setSelected(index);
   }
   function move(from, to) {
-    if (from === to) return;
+    if (readOnly || from === to) return;
+    sort.capture();
+    rowKeys.move(from, to);
     edit((d) => {
       const [item] = d.sequence.splice(from, 1);
       d.sequence.splice(to, 0, item);
     });
     setSelected(to);
   }
-  function drop(event, index) {
-    event.preventDefault();
-    setDragOver(-1);
-    const name = event.dataTransfer.getData('text/component'),
-      raw = event.dataTransfer.getData('text/screw-index');
-    if (name) {
-      if (data.components.some((c) => c.machine === design.machine && c.name === name))
-        add(name, index);
-    } else if (raw !== '') {
-      const from = Number(raw);
-      if (Number.isInteger(from) && from >= 0 && from < design.sequence.length)
-        move(from, index > from ? index - 1 : index);
-    }
-  }
   function remove(index) {
+    if (readOnly) return;
+    sort.capture();
+    rowKeys.remove(index);
     edit((d) => d.sequence.splice(index, 1));
     setSelected(-1);
   }
@@ -138,6 +141,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
     function keydown(e) {
       if (
         modal ||
+        sort.drag ||
         document.querySelector('dialog[open], .print-preview, .workspace-content[inert]') ||
         e.target.closest('input,textarea,select,[contenteditable="true"]')
       )
@@ -375,11 +379,9 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
               <div
                 className="catalog-item"
                 key={c.id}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('text/component', c.name);
-                  e.dataTransfer.effectAllowed = 'copy';
-                }}
+                draggable={!readOnly}
+                onDragStart={(e) => sort.startExternal(e, c.name)}
+                onDragEnd={sort.cancel}
               >
                 <button
                   className="component-add"
@@ -447,20 +449,28 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
             <span>操作</span>
           </div>
           <div
-            className="sequence-list"
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              if (e.target === e.currentTarget) drop(e, design.sequence.length);
-            }}
+            ref={sort.list}
+            className={`sequence-list sortable-list ${sort.drag ? 'sorting' : ''}`}
+            {...sort.listProps}
+            style={{ paddingBottom: sort.extraSpace }}
           >
+            {sort.slot && (
+              <div
+                className="sort-placeholder"
+                style={{ top: sort.slot.top, height: sort.slot.height }}
+                aria-hidden="true"
+              >
+                {sort.slot.name}
+              </div>
+            )}
             {check.spans.map((span, index) => {
               const c = component(data, design, span.name),
                 bad = check.violations.some((v) => v.index === index);
               return (
                 <div
-                  className={`sequence-row ${selected === index ? 'selected' : ''} ${bad ? 'conflict' : ''} ${dragOver === index ? 'drag-over' : ''}`}
-                  key={index}
-                  draggable
+                  className={`sequence-row ${selected === index ? 'selected' : ''} ${bad ? 'conflict' : ''}`}
+                  key={rowKeys.ids[index]}
+                  {...sort.rowProps(index)}
                   onClick={() => setSelected(index)}
                   tabIndex={0}
                   aria-label={`选择位置 ${index + 1}，${c.name}`}
@@ -469,19 +479,6 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
                       e.preventDefault();
                       setSelected(index);
                     }
-                  }}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('text/screw-index', String(index));
-                    e.dataTransfer.effectAllowed = 'move';
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOver(index);
-                  }}
-                  onDragEnd={() => setDragOver(-1)}
-                  onDrop={(e) => {
-                    e.stopPropagation();
-                    drop(e, index);
                   }}
                 >
                   <span className="position">{String(index + 1).padStart(2, '0')}</span>
@@ -537,14 +534,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
                 </div>
               );
             })}
-            <div
-              className="drop-zone"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.stopPropagation();
-                drop(e, design.sequence.length);
-              }}
-            >
+            <div className="drop-zone" style={{ transform: `translateY(${sort.extraSpace}px)` }}>
               <Plus size={22} />
               <span>{design.sequence.length ? '追加元件' : '暂无元件'}</span>
             </div>

@@ -815,7 +815,61 @@ svg {
 }
 .sequence-row,
 .barrel-row {
-  transition: background 0.12s;
+  transition:
+    background 0.12s,
+    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.16s;
+}
+.sortable-list {
+  position: relative;
+  overflow-anchor: none;
+}
+.sortable-list.sorting {
+  isolation: isolate;
+  /* The hook controls edge scrolling; native DnD scrolling can outlive Escape. */
+  overflow-y: hidden;
+}
+.sortable-list.sorting [data-sort-id] {
+  will-change: transform;
+}
+.sortable-list.sorting > :not([data-drag-source]) {
+  pointer-events: none;
+}
+.sortable-list [data-drag-source] {
+  opacity: 0;
+}
+.barrel-row[draggable='true'] {
+  cursor: grab;
+}
+.sort-placeholder {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  z-index: 1;
+  border: 1px dashed var(--teal);
+  border-radius: 3px;
+  background: #e7f5f5;
+  color: #31767e;
+  font-size: 11px;
+  padding: 0 30px;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  transition: top 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sort-drag-image {
+  position: fixed;
+  top: -10000px;
+  left: 0;
+  padding: 8px 16px;
+  min-width: 160px;
+  background: #fff;
+  color: var(--navy);
+  border: 1px solid var(--teal);
+  border-radius: 4px;
+  box-shadow: 0 5px 16px #123f6330;
+  font-size: 12px;
+  white-space: nowrap;
 }
 .sequence-row {
   cursor: grab;
@@ -831,10 +885,6 @@ svg {
 }
 .sequence-row.conflict {
   background: #fff7f0;
-}
-.sequence-row.drag-over {
-  box-shadow: inset 0 3px #16848e;
-  background: #e1f3f4;
 }
 .position {
   font-size: 11px;

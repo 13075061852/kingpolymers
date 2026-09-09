@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Plus, ArrowUp, ArrowDown, Copy, Trash2 } from 'lucide-react';
+import useAnimatedSort from '../hooks/useAnimatedSort.js';
 import BarrelModels from '../domain/barrel-models.js';
 import Modal from './Modal.jsx';
 import { useConfirm } from './ConfirmProvider.jsx';
@@ -10,7 +11,19 @@ export default function BarrelPanel({ data, design, edit, notify, readOnly = fal
     rows = BarrelModels.rows(design.machine, spec, design.ports);
   const [config, setConfig] = useState(null),
     [add, setAdd] = useState(false);
+  const sort = useAnimatedSort({
+    ids: rows.map((r, i) => r.uid || `standard-${i}`),
+    names: rows.map((r) => r.name),
+    disabled: readOnly,
+    kind: 'barrel',
+    onMove: (from, to) =>
+      change((l) => {
+        l.modules.splice(to, 0, ...l.modules.splice(from, 1));
+      }),
+  });
   function change(fn) {
+    if (readOnly) return false;
+    sort.capture();
     try {
       const layout = structuredClone(BarrelModels.materialize(design.machine, spec, design.ports));
       fn(layout);
@@ -57,9 +70,22 @@ export default function BarrelPanel({ data, design, edit, notify, readOnly = fal
         <span>累计</span>
         <span>操作</span>
       </div>
-      <div className="barrel-rows">
+      <div
+        ref={sort.list}
+        className={`barrel-rows sortable-list ${sort.drag ? 'sorting' : ''}`}
+        {...sort.listProps}
+      >
+        {sort.slot && (
+          <div
+            className="sort-placeholder"
+            style={{ top: sort.slot.top, height: sort.slot.height }}
+            aria-hidden="true"
+          >
+            {sort.slot.name}
+          </div>
+        )}
         {rows.map((row, i) => (
-          <div className="barrel-row" key={row.uid || row.pos}>
+          <div className="barrel-row" key={row.uid || `standard-${i}`} {...sort.rowProps(i)}>
             <span className="position">{row.pos}</span>
             <button className="barrel-name" onClick={() => setConfig({ index: i, row })}>
               <strong>{row.name}</strong>

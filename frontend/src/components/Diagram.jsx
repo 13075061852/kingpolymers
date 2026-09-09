@@ -1,10 +1,10 @@
-import { useId } from 'react';
+import { memo, useId } from 'react';
 import ComponentModels from '../domain/component-models.js';
 import BarrelModels from '../domain/barrel-models.js';
 import BarrelVisuals from '../domain/barrel-visuals.js';
 import { appearance, component, validate } from '../domain/design.js';
 
-export default function Diagram({ data, design, selected, onSelect, zoom = 1, svgRef }) {
+function Diagram({ data, design, selected, onSelect, zoom = 1, svgRef }) {
   const id = useId().replace(/:/g, ''),
     spec = data.machines[design.machine],
     check = validate(data, design);
@@ -15,7 +15,11 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
     Math.max(check.total, check.target, (rows.at(-1)?.mm || 0) + spec.entry_offset) - offset;
   const scale = 1080 / Math.max(extent, 1),
     right = 1140 + offset * scale,
-    height = spec.diameter * scale;
+    height = spec.diameter * scale,
+    boreHeight = height * 2 + 7,
+    secondAxisY = 82 + height + 7,
+    barrelEnd = right - spec.entry_offset * scale,
+    fullEntry = !look.referenceView() && rows[0]?.role === 'feed';
   return (
     <div className="drawing-scroll">
       <svg
@@ -46,7 +50,7 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
               <g key={row.uid || row.pos}>
                 <g
                   dangerouslySetInnerHTML={{
-                    __html: BarrelVisuals.module(row, x, row.length * scale, 82, height),
+                    __html: BarrelVisuals.module(row, x, row.length * scale, 82, boreHeight),
                   }}
                 />
                 <text x={x + (row.length * scale) / 2} y="51" textAnchor="middle" fontSize="10">
@@ -55,6 +59,19 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
               </g>
             );
           })}
+          {fullEntry && (
+            <g
+              dangerouslySetInnerHTML={{
+                __html: BarrelVisuals.inlet(
+                  barrelEnd,
+                  spec.entry_offset * scale,
+                  82,
+                  boreHeight,
+                  spec.entry_offset,
+                ),
+              }}
+            />
+          )}
           {check.spans.map((span) => {
             const c = component(data, design, span.name),
               x = right - (span.end + spec.entry_offset) * scale,
@@ -63,6 +80,7 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
             return (
               <g
                 key={span.index}
+                data-element-index={span.index}
                 onClick={() => onSelect?.(span.index)}
                 style={{ cursor: 'pointer' }}
               >
@@ -74,7 +92,7 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
                       pad: 0,
                       stretch: true,
                       thumbnail: true,
-                      layout: `x="${x}" y="84" width="${w}" height="${height}"`,
+                      layout: `x="${x}" y="82" width="${w}" height="${height}"`,
                     }),
                   }}
                 />
@@ -86,7 +104,7 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
                       pad: 0,
                       stretch: true,
                       thumbnail: true,
-                      layout: `x="${x}" y="144" width="${w}" height="${height}"`,
+                      layout: `x="${x}" y="${secondAxisY}" width="${w}" height="${height}"`,
                     }),
                   }}
                 />
@@ -95,13 +113,19 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
                     x={x}
                     y="80"
                     width={Math.max(w, 2)}
-                    height={height + 8}
+                    height={boreHeight + 4}
                     fill="none"
                     stroke={bad ? '#d94747' : '#1d7d86'}
                     strokeWidth="2"
                   />
                 )}
-                <rect x={x} y="75" width={Math.max(w, 3)} height={height + 22} fill="transparent">
+                <rect
+                  x={x}
+                  y="80"
+                  width={Math.max(w, 3)}
+                  height={boreHeight + 4}
+                  fill="transparent"
+                >
                   <title>
                     {c.name} · {c.length} mm
                   </title>
@@ -113,10 +137,13 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
             );
           })}
         </g>
-        <text x="16" y="100" fontSize="10" fill="#8195a3">
+        {look.referenceView() && (
+          <g dangerouslySetInnerHTML={{ __html: look.plate(barrelEnd, 82, boreHeight) }} />
+        )}
+        <text x="16" y={82 + height * 0.7} fontSize="10" fill="#8195a3">
           A 轴
         </text>
-        <text x="16" y="161" fontSize="10" fill="#8195a3">
+        <text x="16" y={secondAxisY + height * 0.7} fontSize="10" fill="#8195a3">
           B 轴
         </text>
         <line x1="60" x2="1140" y1="196" y2="196" stroke="#a8b6be" />
@@ -138,3 +165,4 @@ export default function Diagram({ data, design, selected, onSelect, zoom = 1, sv
     </div>
   );
 }
+export default memo(Diagram);

@@ -357,3 +357,172 @@ test('compact desktop stays in one viewport with independent panes and a working
     await nav(page, '组合设计').click();
   }
 });
+
+test('short first elements stay within the displayed inlet and match the report', async ({
+  page,
+  request,
+}) => {
+  const data = await (await request.get('/api/bootstrap')).json();
+  for (const machine of ['50', '60']) {
+    await page.goto('/');
+    await page.getByLabel('当前机型').selectOption(machine);
+    const item = data.components.find(
+      (c) =>
+        c.machine === machine && c.type === 'KB' && c.length <= data.machines[machine].entry_offset,
+    );
+    await page.getByRole('button', { name: '加入 ' + item.name, exact: true }).click();
+    await page.getByRole('button', { name: '复制元件 1', exact: true }).click();
+    const inlet = page.locator('.drawing [data-entry-connection]');
+    await expect(inlet).toHaveAttribute(
+      'data-entry-offset',
+      String(data.machines[machine].entry_offset),
+    );
+    const bounds = await page.locator('.drawing').evaluate((svg) => {
+      const plate = svg.querySelector('[data-entry-endplate]').getBoundingClientRect();
+      const housing = svg.querySelector('[data-entry-connection]').getBoundingClientRect();
+      const elements = [...svg.querySelectorAll('[data-element-index] svg')].map((el) => {
+        const b = el.getBoundingClientRect();
+        return { right: b.right, top: b.top, bottom: b.bottom };
+      });
+      return {
+        right: plate.left,
+        top: housing.top,
+        bottom: housing.bottom,
+        elements,
+        upperY: svg.querySelector('[data-element-index] svg').getAttribute('y'),
+      };
+    });
+    expect(bounds.elements).toHaveLength(4);
+    expect(
+      bounds.elements.every(
+        (b) => b.right <= bounds.right + 0.5 && b.top >= bounds.top && b.bottom <= bounds.bottom,
+      ),
+    ).toBe(true);
+    expect(bounds.upperY).toBe('82');
+    await screenshot(page, 'inlet-short-' + machine);
+    await page.getByRole('button', { name: '工程图 / PDF', exact: true }).click();
+    await expect(page.locator('#printRoot [data-entry-connection]').first()).toHaveAttribute(
+      'data-entry-offset',
+      String(data.machines[machine].entry_offset),
+    );
+    await page.getByRole('button', { name: '返回编辑' }).click();
+    await expect(page.locator('.sequence-row')).toHaveCount(2);
+  }
+});
+
+async function dragPreview(page, source, destination) {
+  const a = await source.boundingBox();
+  await page.mouse.move(a.x + 60, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(a.x + 68, a.y + a.height / 2 + 7, { steps: 3 });
+  await page.mouse.move(destination.x, destination.y, { steps: 12 });
+  await page.mouse.move(destination.x + 1, destination.y);
+}
+
+test('native sorting animates row displacement, preserves duplicates and cancels cleanly', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const names = ['GFA-2-60-60', 'GFA-2-30-30', 'GFA-2-60-60', 'GFA-2-45-60'];
+  for (const name of names)
+    await page.getByRole('button', { name: '加入 ' + name, exact: true }).click();
+  const rows = page.locator('.sequence-row');
+  const identity = await rows.first().getAttribute('data-sort-id');
+  const last = await rows.last().boundingBox();
+  await dragPreview(page, rows.first(), { x: last.x + 80, y: last.y + last.height - 4 });
+  await expect(page.locator('.sequence-list .sort-placeholder')).toBeVisible();
+  expect(await rows.nth(1).evaluate((el) => getComputedStyle(el).transitionProperty)).toContain(
+    'transform',
+  );
+  await expect
+    .poll(async () =>
+      rows.nth(1).evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).m42),
+    )
+    .toBeLessThan(-20);
+  const previewTop = (await rows.nth(1).boundingBox()).y;
+  await page.screenshot({ path: captures + '/sorting-preview.png' });
+  await page.mouse.up();
+  await expect(rows.locator('.sequence-name strong')).toHaveText([
+    names[1],
+    names[2],
+    names[3],
+    names[0],
+  ]);
+  expect(Math.abs((await rows.first().boundingBox()).y - previewTop)).toBeLessThan(2);
+  await expect(rows.last()).toHaveAttribute('data-sort-id', identity);
+  await expect(page.locator('.sort-placeholder')).toHaveCount(0);
+  await page.keyboard.press('Control+z');
+  await expect(rows.locator('.sequence-name strong')).toHaveText(names);
+  const end = await rows.last().boundingBox();
+  await dragPreview(page, rows.first(), { x: end.x + 80, y: end.y + end.height - 4 });
+  await expect(page.locator('.sort-placeholder')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await expect(rows.locator('.sequence-name strong')).toHaveText(names);
+  await expect(page.locator('.sort-placeholder')).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      rows.nth(1).evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).m42),
+    )
+    .toBe(0);
+  // Native insertion from the library into the middle keeps the rest in order.
+  const second = await rows.nth(1).boundingBox();
+  const extra = 'GFA-2-45-30';
+  await dragPreview(
+    page,
+    page.getByRole('button', { name: '加入 ' + extra, exact: true }).locator('..'),
+    { x: second.x + 80, y: second.y + second.height - 4 },
+  );
+  await expect(page.locator('.sequence-list .sort-placeholder')).toBeVisible();
+  await page.mouse.up();
+  await expect(rows.locator('.sequence-name strong')).toHaveText([
+    names[0],
+    names[1],
+    extra,
+    names[2],
+    names[3],
+  ]);
+  // Barrel rows use the same animation and keep stable module identities.
+  const barrels = page.locator('.barrel-row');
+  const barrelId = await barrels.nth(2).getAttribute('data-sort-id');
+  const target = await barrels.nth(4).boundingBox();
+  await dragPreview(page, barrels.nth(2), { x: target.x + 35, y: target.y + target.height - 3 });
+  await expect(page.locator('.barrel-rows .sort-placeholder')).toBeVisible();
+  await page.mouse.up();
+  await expect(barrels.nth(4)).toHaveAttribute('data-sort-id', barrelId);
+});
+
+test('drag edge scrolling and reduced motion preserve a single undo step', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '使用标准模板', exact: true }).click();
+  const list = page.locator('.sequence-list');
+  const bounds = await list.boundingBox();
+  await dragPreview(page, page.locator('.sequence-row').first(), {
+    x: bounds.x + 70,
+    y: bounds.y + bounds.height - 8,
+  });
+  await expect.poll(async () => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await list.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  const third = await page.locator('.sequence-row').nth(2).boundingBox();
+  await dragPreview(page, page.locator('.sequence-row').first(), {
+    x: third.x + 70,
+    y: third.y + third.height - 3,
+  });
+  await expect(page.locator('.sort-placeholder')).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeEnabled();
+  expect(
+    await page
+      .locator('.sequence-row')
+      .first()
+      .evaluate((el) => el.getAnimations().length),
+  ).toBe(0);
+  await page.keyboard.press('Control+z');
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeDisabled();
+});
