@@ -1,2 +1,33 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><link rel="icon" href="/brand-logo.svg"/><title>kingpolymer · 双螺杆设计</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/brand-logo.svg" />
+    <link
+      rel="preload"
+      as="image"
+      href="/assets/login/screw-fallback.webp"
+      fetchpriority="high"
+      media="(min-width: 681px)"
+    />
+    <link
+      rel="preload"
+      as="image"
+      href="/assets/login/industrial-stage.webp"
+      media="(min-width: 681px)"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #f3f6f8;
+      }
+    </style>
+    <title>kingpolymer · 双螺杆设计</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

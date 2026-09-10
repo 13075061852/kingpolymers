@@ -4,6 +4,8 @@ Run this file, then open the printed URL on macOS or Windows.
 """
 from __future__ import annotations
 import base64, hashlib, io, json, mimetypes, os, re, shutil, socket, sqlite3, subprocess, sys, tempfile, traceback, uuid
+import gzip
+from functools import lru_cache
 from datetime import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -18,6 +20,11 @@ DATA = Path(os.environ.get("GJ_DATA_DIR", str(ROOT / "runtime" / "server" / "dat
 BACKUPS = Path(os.environ.get("GJ_BACKUP_DIR", str(ROOT / "runtime" / "server" / "backups"))).resolve()
 DB_PATH = DATA / "guangjun_screw.db"
 SEED_PATH = ROOT / "backend" / "resources" / "seed.json"
+
+@lru_cache(maxsize=64)
+def static_payload(path, modified, size, compressed):
+    body = Path(path).read_bytes()
+    return gzip.compress(body, compresslevel=6, mtime=0) if compressed else body
 HOST = os.environ.get("GJ_HOST", "0.0.0.0")
 PORT = int(os.environ.get("GJ_PORT", "8731"))
 CONFIRM_CODE = "13566070731"
@@ -353,6 +360,8 @@ class Handler(AuthMixin, BaseHTTPRequestHandler):
     def save_project(self,data):
         machine=str(data.get("machine","50"));seq=data.get("sequence",[]);ports=normalize_ports(machine,data.get("ports",{}))
         check=validate(machine,seq,ports); override=(data.get("override_reason") or "").strip(); code=str(data.get("confirm_code", ""))
+        if check['difference']>0:
+            self.send_json({"error":f"组合总长 {check['total']} mm 超过螺杆可用长度 {check['target']} mm（超出 {check['difference']} mm），请删减元件后保存","validation":check},422);return
         needs=bool(check["violations"] or check["difference"] or check['barrel_warnings'])
         if needs:
             with db() as c:h=c.execute("SELECT value FROM settings WHERE key='confirm_code_hash'").fetchone()[0]
@@ -376,6 +385,8 @@ class Handler(AuthMixin, BaseHTTPRequestHandler):
             if not row:self.send_json({"error":"项目不存在"},404);return
             if row["status"]!="draft":self.send_json({"error":"只有草稿可以发布；已发布或作废方案请先另存"},409);return
             seq=loads(row["sequence_json"],[]); ports=loads(row["ports_json"],{}); check=validate(row["machine"],seq,ports)
+            if check['difference']>0:
+                self.send_json({"error":f"组合超长 {check['difference']} mm，不能发布，请先修正方案","validation":check},422);return
             h=c.execute("SELECT value FROM settings WHERE key='confirm_code_hash'").fetchone()[0]
             shortages=[]; counts={n:seq.count(n)*2 for n in set(seq)}
             for name,qty in counts.items():
@@ -478,7 +489,21 @@ class Handler(AuthMixin, BaseHTTPRequestHandler):
                 self.send_error(404);return
             target=STATIC/"index.html"
         if not target.is_file():self.send_error(503,'Build the React frontend first');return
-        body=target.read_bytes();ctype=mimetypes.guess_type(str(target))[0] or "application/octet-stream";self.send_response(200);self.send_header("Content-Type",ctype+("; charset=utf-8" if ctype.startswith("text/") else ""));self.send_header("Content-Length",len(body));self.send_header("Cache-Control","no-cache");self.end_headers();self.wfile.write(body)
+        stat=target.stat()
+        ctype=mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+        encodings=self.headers.get('Accept-Encoding','')
+        compressed=target.suffix in ('.js','.css','.html','.json','.svg') and stat.st_size>1024 and any(part.strip().split(';')[0]=='gzip' and not re.search(r';\s*q=0(?:\.0*)?\s*$',part) for part in encodings.split(','))
+        etag=f'"{stat.st_mtime_ns:x}-{stat.st_size:x}{"-gz" if compressed else ""}"'
+        immutable=target.parent==STATIC/'assets' and bool(re.search(r'-[A-Za-z0-9_-]{8,}\.(?:js|css)$',target.name))
+        cache='public, max-age=31536000, immutable' if immutable else 'no-cache'
+        unchanged=etag in [tag.strip().removeprefix('W/') for tag in self.headers.get('If-None-Match','').split(',')]
+        self.send_response(304 if unchanged else 200)
+        self.send_header('Cache-Control',cache);self.send_header('ETag',etag);self.send_header('Vary','Accept-Encoding')
+        if unchanged:self.end_headers();return
+        body=static_payload(str(target),stat.st_mtime_ns,stat.st_size,compressed)
+        self.send_header('Content-Type',ctype+('; charset=utf-8' if ctype.startswith('text/') else ''))
+        if compressed:self.send_header('Content-Encoding','gzip')
+        self.send_header('Content-Length',len(body));self.end_headers();self.wfile.write(body)
     def fail(self,e):
         traceback.print_exc();self.send_json({"error":str(e)},400 if isinstance(e,ValueError) else 500)
 

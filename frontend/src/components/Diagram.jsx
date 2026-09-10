@@ -11,6 +11,8 @@ function Diagram({
   selected,
   onSelect,
   onMove,
+  onRemove,
+  onDragChange,
   elementIds = [],
   readOnly = false,
   zoom = 1,
@@ -49,6 +51,8 @@ function Diagram({
     visibleRight: look.referenceView() ? barrelEnd : null,
     onMove,
     onSelect,
+    onRemove,
+    onDragChange,
   });
   const attachSvg = useCallback(
     (node) => {
@@ -66,18 +70,13 @@ function Diagram({
         role="group"
         aria-label="螺杆侧视单轴组合图"
         data-axis-view="single"
+        data-reference-view={look.referenceView() ? 'barrel' : 'full'}
         data-diagram-dragging={sort.drag?.active || undefined}
         viewBox="0 0 1200 212"
         style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%`, minWidth: 720 }}
         xmlns="http://www.w3.org/2000/svg"
       >
         <rect width="1200" height="212" fill="white" />
-        <text x="60" y="20" fontSize="12" fill="#223c4b">
-          {spec.name} · 螺杆 {check.total} / {check.target} mm
-        </text>
-        <text x="60" y="36" fontSize="10" fill="#71818c">
-          {look.note()}
-        </text>
         <defs>
           <clipPath id={`${id}-axis`}>
             <rect x="0" y="40" width={1140} height="124" />

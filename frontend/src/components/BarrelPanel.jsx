@@ -28,10 +28,10 @@ export default function BarrelPanel({ data, design, edit, notify, readOnly = fal
       const layout = structuredClone(BarrelModels.materialize(design.machine, spec, design.ports));
       fn(layout);
       const normalized = BarrelModels.normalize(design.machine, spec, layout);
-      edit((d) => {
+      const accepted = edit((d) => {
         d.ports.barrel_layout = normalized;
       });
-      return true;
+      return accepted !== false;
     } catch (error) {
       notify(error.message, true);
       return false;

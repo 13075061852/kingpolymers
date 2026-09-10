@@ -21,7 +21,7 @@ import Modal from './components/Modal.jsx';
 import Toast from './components/Toast.jsx';
 import ConfirmProvider, { useConfirm } from './components/ConfirmProvider.jsx';
 import PrintPreview from './components/PrintPreview.jsx';
-import { emptyDesign } from './domain/design.js';
+import { emptyDesign, validate } from './domain/design.js';
 
 const pages = [
   ['designer', '组合设计', Layers3],
@@ -53,9 +53,9 @@ function Workspace() {
   const notify = useCallback((message, error = false) => setToast({ message, error }), []);
   const refresh = useCallback(async () => {
     const next = await api('/bootstrap');
-    if (account.current && account.current !== (next.auth.enabled ? next.auth.username : 'local'))
-      editor.load(emptyDesign());
-    account.current = next.auth.enabled ? next.auth.username : 'local';
+    const identity = next.auth.enabled ? `user:${next.auth.username}` : 'local';
+    if (account.current !== identity) editor.restore(identity);
+    account.current = identity;
     setSession(next.auth);
     setData(next);
     return next;
@@ -95,15 +95,8 @@ function Workspace() {
     return () => clearTimeout(timer);
   }, [toast]);
   useEffect(() => {
-    const leave = (event) => {
-      if (editor.dirty) {
-        event.preventDefault();
-        event.returnValue = '';
-      }
-    };
-    window.addEventListener('beforeunload', leave);
-    return () => window.removeEventListener('beforeunload', leave);
-  }, [editor.dirty]);
+    if (editor.storageError) notify(editor.storageError, true);
+  }, [editor.storageError, notify]);
   async function run(work) {
     if (working.current) return false;
     working.current = true;
@@ -126,6 +119,11 @@ function Workspace() {
       return;
     }
     const payload = { ...editor.design, ...approval, ...(asNew ? { id: null } : {}) };
+    const lengthCheck = validate(data, editor.design);
+    if (lengthCheck.difference > 0) {
+      notify(`组合超长 ${lengthCheck.difference} mm，请删减元件后保存。`, true);
+      return;
+    }
     if (editor.design.status === 'released' && !asNew) {
       notify('已发布项目不能直接修改，请另存为新方案', true);
       return;
@@ -189,14 +187,9 @@ function Workspace() {
     });
   }
   async function logout() {
-    if (
-      editor.dirty &&
-      !(await ask('当前方案未保存，退出将丢弃修改。', { title: '退出工作台', action: '退出登录' }))
-    )
-      return;
     await run(async () => {
       await api('/auth/logout', {});
-      editor.load(emptyDesign());
+      account.current = null;
       setPage('designer');
       setSession(null);
       setData(null);

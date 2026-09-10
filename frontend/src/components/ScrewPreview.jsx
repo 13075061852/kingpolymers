@@ -17,7 +17,7 @@ export default function ScrewPreview({ hero = false, item, spec }) {
     let cancelled = false,
       instance;
     setStatus('loading');
-    import('../lib/scene3d.js')
+    (hero ? import('../lib/heroScene.js') : import('../lib/scene3d.js'))
       .then(({ createScene }) => {
         if (cancelled) return;
         try {
@@ -28,7 +28,7 @@ export default function ScrewPreview({ hero = false, item, spec }) {
           });
           scene.current = instance;
           instance.setAuto(auto);
-          setStatus('ready');
+          if (!hero) setStatus('ready');
         } catch {
           if (!cancelled) setStatus('fallback');
         }
@@ -45,7 +45,16 @@ export default function ScrewPreview({ hero = false, item, spec }) {
   return (
     <div data-state={status} className={'screw-preview ' + (hero ? 'hero-preview' : '')}>
       <div className="scene-host" ref={host} />
-      {status !== 'ready' && (
+      {hero && (
+        <img
+          className="hero-poster"
+          src="/assets/login/screw-fallback.webp"
+          alt="螺杆组合立体示意"
+          fetchPriority="high"
+          loading="eager"
+        />
+      )}
+      {!hero && status !== 'ready' && (
         <div className="scene-fallback">
           {item && spec ? (
             <div
@@ -63,7 +72,7 @@ export default function ScrewPreview({ hero = false, item, spec }) {
           {status === 'loading' && <span className="scene-loading">正在加载立体预览…</span>}
         </div>
       )}
-      {status === 'ready' && (
+      {status === 'ready' && !hero && (
         <div className="scene-controls">
           <span>拖动旋转 · 立体示意</span>
           <div>

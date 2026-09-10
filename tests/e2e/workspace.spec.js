@@ -19,6 +19,36 @@ test.beforeEach(async ({ page }) => {
     throw error;
   });
 });
+
+test('refresh restores browser draft silently and only explicit save uploads it', async ({
+  page,
+}) => {
+  const writes = [];
+  const dialogs = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/') && request.method() !== 'GET') writes.push(request.url());
+  });
+  page.on('dialog', async (dialog) => {
+    dialogs.push(dialog.type());
+    await dialog.accept();
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: '使用标准模板', exact: true }).click();
+  const count = await page.locator('.sequence-row').count();
+  await page.getByRole('button', { name: '图纸资料', exact: true }).click();
+  await page.getByLabel('图纸名称', { exact: true }).fill('刷新本地草稿');
+  await page.getByRole('button', { name: '完成', exact: true }).click();
+  await page.reload();
+  await expect(page.locator('.sequence-row')).toHaveCount(count);
+  await expect(page.getByRole('heading', { name: /刷新本地草稿/ })).toBeVisible();
+  expect(dialogs).toEqual([]);
+  expect(writes).toEqual([]);
+  const upload = page.waitForRequest(
+    (request) => request.url().endsWith('/api/projects') && request.method() === 'POST',
+  );
+  await page.getByRole('button', { name: '保存方案', exact: true }).click();
+  expect((await upload).postDataJSON().metadata.drawing_name).toBe('刷新本地草稿');
+});
 test('desktop design, empty state, 3D catalog, inventory and settings', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('button', { name: '使用标准模板' })).toBeVisible();
@@ -148,8 +178,10 @@ test('responsive mobile and reduced motion', async ({ page }) => {
 test('cloud login, 3D hero, failed credentials and password change', async ({ page }) => {
   await page.goto('http://127.0.0.1:8741');
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '暂停旋转' })).toBeVisible({ timeout: 15000 });
-  await page.getByRole('button', { name: '暂停旋转' }).click();
+  await expect(page.locator('.hero-preview')).toHaveAttribute('data-state', 'ready', {
+    timeout: 15000,
+  });
+  await expect(page.locator('.hero-preview .scene-controls')).toHaveCount(0);
   await screenshot(page, '01-login');
   await page.getByLabel('用户名', { exact: true }).fill('ui-engineer');
   await page.getByLabel('密码', { exact: true }).fill('wrong');
@@ -171,6 +203,107 @@ test('cloud login, 3D hero, failed credentials and password change', async ({ pa
   await expect(nav(page, '组合设计')).toBeVisible();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible();
+});
+
+test('shaft capacity blocks adding, copying and shortening below installed elements', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'kingpolymers:design:v1:local',
+      JSON.stringify({
+        current: {
+          machine: '50',
+          sequence: [...Array(25).fill('GFA-2-30-100-K'), ...Array(3).fill('GFA-2-30-30')],
+          ports: {},
+          metadata: {},
+          id: null,
+          status: 'draft',
+        },
+        baseline: null,
+      }),
+    );
+  });
+  await page.goto('/');
+  await expect(page.locator('.sequence-row')).toHaveCount(28);
+  const short = page.getByRole('button', { name: '加入 GFA-2-30-30', exact: true });
+  await expect(short).toBeDisabled();
+  await expect(short.locator('..')).toHaveClass(/capacity-disabled/);
+  await expect(short.locator('..')).toHaveAttribute('draggable', 'false');
+  await expect(short.getByText('长度不足')).toBeVisible();
+  await expect(
+    page.locator('.sequence-row').first().getByRole('button', { name: /复制/ }),
+  ).toBeDisabled();
+  await page.getByRole('button', { name: '轴长', exact: true }).click();
+  await page.locator('input[name="length"]').fill('2500');
+  await page.getByRole('button', { name: '应用配置', exact: true }).click();
+  await expect(page.getByText(/操作后总长 2590 mm/)).toBeVisible();
+  await expect(page.locator('input[name="length"]')).toBeVisible();
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  const first = page.locator('.sequence-row').first();
+  await first.getByRole('button', { name: /删除/ }).click();
+  await expect(page.locator('.sequence-row')).toHaveCount(27);
+  await expect(short).toBeEnabled();
+  await expect(short.locator('..')).toHaveAttribute('draggable', 'true');
+  await expect(page.getByRole('button', { name: '加入 GFF-2-72-180', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '加入 GFA-2-30-100-K', exact: true }).click();
+  await expect(page.locator('.sequence-row')).toHaveCount(28);
+});
+
+test('mobile login only loads the form and restores the scene on desktop', async ({ page }) => {
+  await page.setViewportSize({ width: 400, height: 861 });
+  const requests = [];
+  page.on('request', (request) => requests.push(request.url()));
+  await page.goto('http://127.0.0.1:8741/login');
+  await expect(page.getByRole('button', { name: '登录工作台' })).toBeInViewport();
+  await expect(page.locator('.tech-header')).toBeHidden();
+  await expect(page.locator('.tech-intro')).toBeHidden();
+  await expect(page.locator('.tech-scene, .hero-poster, canvas')).toHaveCount(0);
+  expect(
+    requests.filter((url) =>
+      /heroScene-|RoomEnvironment-|scene3d-|screw-fallback|industrial-stage/.test(url),
+    ),
+  ).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(
+    true,
+  );
+  await page.screenshot({ path: captures + '/mobile-login.png' });
+  await page.setViewportSize({ width: 1600, height: 1050 });
+  await expect(page.locator('.hero-preview')).toHaveAttribute('data-state', 'ready');
+  await page.setViewportSize({ width: 400, height: 861 });
+  await expect(page.locator('.tech-scene, canvas')).toHaveCount(0);
+});
+
+test('login shows the screw poster while the 3D module is delayed', async ({ page }) => {
+  const scripts = [];
+  page.on('request', (request) => {
+    if (request.resourceType() === 'script') scripts.push(request.url());
+  });
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/assets/heroScene-*.js', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.goto('http://127.0.0.1:8741/login', { waitUntil: 'domcontentloaded' });
+  const hero = page.locator('.hero-preview');
+  const poster = hero.locator('.hero-poster');
+  try {
+    await expect(page.getByRole('button', { name: '登录工作台' })).toBeVisible();
+    await expect
+      .poll(() => poster.evaluate((img) => img.complete && img.naturalWidth > 0))
+      .toBe(true);
+    await expect(poster).toHaveCSS('opacity', '1');
+    await expect(hero).toHaveAttribute('data-state', 'loading');
+    expect(scripts.some((url) => /\/App-[^/]+\.js/.test(url))).toBe(false);
+  } finally {
+    release();
+  }
+  await expect(hero).toHaveAttribute('data-state', 'ready', { timeout: 15000 });
+  await expect(hero.locator('.scene-host')).toHaveCSS('opacity', '1');
+  await expect(poster).toHaveCSS('opacity', '0');
 });
 
 test('real drag, keyboard undo, PNG and Excel downloads', async ({ page }) => {
@@ -534,7 +667,7 @@ test('reference view keeps the first drop slot visible when a short block moves 
     await page.getByRole('button', { name: '加入 ' + name, exact: true }).click();
   const drawing = page.locator('.drawing');
   const items = drawing.locator('[data-element-index]');
-  await expect(drawing).toContainText('偏置段未展开');
+  await expect(drawing).toHaveAttribute('data-reference-view', 'barrel');
   const source = await items.nth(1).locator('[data-element-hitbox]').boundingBox();
   const endpoint = await drawing.evaluate((svg) => {
     const point = svg.createSVGPoint();
@@ -555,7 +688,7 @@ test('reference view keeps the first drop slot visible when a short block moves 
   expect(Math.abs(slotBox.x + slotBox.width - endpoint.x)).toBeLessThan(2);
   await page.mouse.up();
   await expect(page.locator('.sequence-name strong')).toHaveText([names[1], names[0], names[2]]);
-  await expect(drawing).toContainText('全轴显示');
+  await expect(drawing).toHaveAttribute('data-reference-view', 'full');
   await expect(drawing.locator('[data-entry-connection]')).toBeVisible();
 });
 

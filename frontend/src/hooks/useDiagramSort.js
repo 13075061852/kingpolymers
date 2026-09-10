@@ -3,7 +3,17 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 const reduced = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export default function useDiagramSort({ root, items, disabled, visibleRight, onMove, onSelect }) {
+export default function useDiagramSort({
+  root,
+  items,
+  disabled,
+  visibleRight,
+  onMove,
+  onSelect,
+  onRemove,
+  onDragChange,
+}) {
+  const floating = useRef(null);
   const current = useRef(null),
     before = useRef(null),
     landing = useRef(null),
@@ -11,8 +21,16 @@ export default function useDiagramSort({ root, items, disabled, visibleRight, on
     animations = useRef([]),
     latest = useRef(null);
   const [drag, setDrag] = useState(null);
-  latest.current = { items, disabled, visibleRight, onMove, onSelect };
+  latest.current = { items, disabled, visibleRight, onMove, onSelect, onRemove };
 
+  useEffect(() => {
+    onDragChange?.(!!drag?.active);
+    return () => onDragChange?.(false);
+  }, [!!drag?.active, onDragChange]);
+  function overDelete(x, y) {
+    const box = document.querySelector('[data-element-delete-zone]')?.getBoundingClientRect();
+    return box && x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
+  }
   function pointX(clientX, clientY) {
     const svg = root.current,
       matrix = svg?.getScreenCTM();
@@ -51,6 +69,45 @@ export default function useDiagramSort({ root, items, disabled, visibleRight, on
     );
   }
 
+  function clearFloating() {
+    floating.current?.remove();
+    floating.current = null;
+  }
+  function followPointer(state, clientX, clientY) {
+    if (Math.abs(clientY - state.startClientY) <= 12) {
+      clearFloating();
+      return false;
+    }
+    if (!floating.current) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      const box = state.bounds,
+        local = state.localBounds;
+      svg.setAttribute('viewBox', `${local.x} ${local.y} ${local.width} ${local.height}`);
+      svg.setAttribute('data-diagram-floating', 'true');
+      svg.setAttribute('aria-hidden', 'true');
+      Object.assign(svg.style, {
+        position: 'fixed',
+        left: `${box.x}px`,
+        top: `${box.y}px`,
+        width: `${box.width}px`,
+        height: `${box.height}px`,
+        pointerEvents: 'none',
+        zIndex: '1200',
+        overflow: 'visible',
+      });
+      const clone = state.capture.cloneNode(true);
+      clone.removeAttribute('style');
+      clone.removeAttribute('tabindex');
+      clone.removeAttribute('data-element-index');
+      clone.removeAttribute('data-sort-id');
+      clone.removeAttribute('data-diagram-sort-id');
+      svg.append(clone);
+      document.body.append(svg);
+      floating.current = svg;
+    }
+    floating.current.style.transform = `translate(${clientX - state.startClientX}px, ${clientY - state.startClientY}px)`;
+    return true;
+  }
   function stopScroll() {
     cancelAnimationFrame(frame.current);
     frame.current = 0;
@@ -75,6 +132,7 @@ export default function useDiagramSort({ root, items, disabled, visibleRight, on
     if (!state) return;
     if (animate && state.active) capture(state);
     current.current = null;
+    clearFloating();
     stopScroll();
     releaseCapture(state);
     setDrag(null);
@@ -144,7 +202,11 @@ export default function useDiagramSort({ root, items, disabled, visibleRight, on
         target = candidate;
       }
     }
-    const next = { ...state, active: true, left, target, clientX, clientY };
+    document
+      .querySelector('[data-element-delete-zone]')
+      ?.classList.toggle('delete-hover', !!overDelete(clientX, clientY));
+    const detached = followPointer(state, clientX, clientY);
+    const next = { ...state, active: true, detached, left, target, clientX, clientY };
     current.current = next;
     setDrag(next);
   }
@@ -175,7 +237,7 @@ export default function useDiagramSort({ root, items, disabled, visibleRight, on
   function begin(event, index) {
     stopAnimations();
     latest.current.onSelect?.(index);
-    if (latest.current.disabled || event.button !== 0 || latest.current.items.length < 2) return;
+    if (latest.current.disabled || event.button !== 0 || !latest.current.items.length) return;
     const x = pointX(event.clientX, event.clientY),
       item = latest.current.items[index];
     if (x == null || !item) return;
@@ -198,6 +260,8 @@ export default function useDiagramSort({ root, items, disabled, visibleRight, on
       startClientY: event.clientY,
       clientX: event.clientX,
       clientY: event.clientY,
+      bounds: event.currentTarget.getBoundingClientRect(),
+      localBounds: event.currentTarget.getBBox(),
       capture: event.currentTarget,
     };
   }
@@ -224,9 +288,14 @@ export default function useDiagramSort({ root, items, disabled, visibleRight, on
       landing.current = state.id;
     }
     current.current = null;
+    clearFloating();
     stopScroll();
     releaseCapture(state);
     setDrag(null);
+    if (state.active && !latest.current.disabled && overDelete(event.clientX, event.clientY)) {
+      latest.current.onRemove?.(state.from);
+      return;
+    }
     if (state.active && state.from !== state.target)
       latest.current.onMove?.(state.from, state.target);
   }
@@ -250,6 +319,7 @@ export default function useDiagramSort({ root, items, disabled, visibleRight, on
       window.removeEventListener('pointerup', finish);
       window.removeEventListener('pointercancel', pointerCancel);
       window.removeEventListener('blur', blur);
+      clearFloating();
       stopScroll();
       stopAnimations();
       releaseCapture(current.current);
@@ -282,7 +352,7 @@ export default function useDiagramSort({ root, items, disabled, visibleRight, on
         'aria-grabbed': source || undefined,
         style: {
           cursor: source ? 'grabbing' : disabled ? 'pointer' : 'grab',
-          opacity: source ? 0.78 : 1,
+          opacity: source ? (drag.detached ? 0 : 0.78) : 1,
           transform: `translateX(${amount}px)`,
           transition: source ? 'none' : 'transform 180ms cubic-bezier(.2,.8,.2,1)',
           touchAction: 'none',

@@ -46,13 +46,25 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
       notify('已发布方案已锁定，请先创建可编辑副本', true);
       return;
     }
+    const next = structuredClone(design);
+    update(next);
+    const after = validate(data, next);
+    if (after.difference > 0 && after.difference > Math.max(0, check.difference)) {
+      notify(
+        `操作后总长 ${after.total} mm，超过螺杆可用长度 ${after.target} mm（超出 ${after.difference} mm）。请缩短组合或调整轴长。`,
+        true,
+      );
+      return false;
+    }
     applyEdit(update);
+    return true;
   };
   const [query, setQuery] = useState(''),
     [type, setType] = useState(''),
     [selected, setSelected] = useState(-1),
     [zoom, setZoom] = useState(1),
-    [modal, setModal] = useState(null);
+    [modal, setModal] = useState(null),
+    [diagramDragging, setDiagramDragging] = useState(false);
   const file = useRef(null),
     svg = useRef(null);
   const rowKeys = useSequenceKeys(design.sequence);
@@ -72,6 +84,14 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
   const valid = !check.difference && !check.violations.length && !check.barrel_warnings.length;
   const summary = BarrelModels.summary(design.machine, spec, design.ports);
   const replace = async (next) => {
+    const incoming = validate(data, next);
+    if (incoming.difference > 0) {
+      notify(
+        `方案总长 ${incoming.total} mm，超过螺杆可用长度 ${incoming.target} mm，无法载入为新组合。`,
+        true,
+      );
+      return false;
+    }
     if (
       dirty &&
       !(await ask('当前方案有未保存的修改，继续会丢弃这些修改。', {
@@ -87,6 +107,14 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
   };
   function add(name, index = design.sequence.length) {
     if (readOnly) return;
+    const length = component(data, design, name).length;
+    if (check.total + length > check.target) {
+      notify(
+        `无法添加 ${name}（${length} mm）：螺杆剩余可用长度 ${Math.max(0, check.target - check.total)} mm。`,
+        true,
+      );
+      return;
+    }
     sort.capture();
     rowKeys.insert(name, index);
     edit((d) => d.sequence.splice(index, 0, name));
@@ -103,7 +131,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
     setSelected(to);
   }
   function remove(index) {
-    if (readOnly) return;
+    if (readOnly || index < 0 || index >= design.sequence.length) return;
     sort.capture();
     rowKeys.remove(index);
     edit((d) => d.sequence.splice(index, 1));
@@ -131,6 +159,11 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
         metadata: result.metadata || {},
         ports: result.ports || { natural4: true, natural7: true },
       };
+      const incomingCheck = validate(data, next);
+      if (incomingCheck.difference > 0)
+        throw Error(
+          `导入组合总长 ${incomingCheck.total} mm，超过螺杆可用长度 ${incomingCheck.target} mm（超出 ${incomingCheck.difference} mm），请先修正文件。`,
+        );
       editor.load(next);
       setSelected(-1);
       setModal(null);
@@ -138,14 +171,38 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
     });
   }
   useEffect(() => {
+    function clearSelection(event) {
+      if (modal || sort.drag || diagramDragging) return;
+      if (
+        event.target.closest(
+          '[data-element-index], .sequence-row, .selection-tools, button, input, textarea, select, a, [contenteditable], [role="dialog"], dialog',
+        )
+      )
+        return;
+      setSelected(-1);
+      if (document.activeElement?.matches('[data-element-index]')) document.activeElement.blur();
+    }
+    document.addEventListener('pointerdown', clearSelection);
+    return () => document.removeEventListener('pointerdown', clearSelection);
+  }, [modal, sort.drag, diagramDragging]);
+  useEffect(() => {
     function keydown(e) {
       if (
         modal ||
         sort.drag ||
+        diagramDragging ||
         document.querySelector('dialog[open], .print-preview, .workspace-content[inert]') ||
         e.target.closest('input,textarea,select,[contenteditable="true"]')
       )
         return;
+      if (e.key === 'Escape') {
+        setSelected(-1);
+        if (document.activeElement?.matches('[data-element-index]')) document.activeElement.blur();
+      }
+      if (e.key === 'Delete' && !readOnly && selected >= 0) {
+        e.preventDefault();
+        remove(selected);
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (!readOnly) e.shiftKey ? editor.redo() : editor.undo();
@@ -160,6 +217,28 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
   });
   return (
     <section className="designer">
+      {!readOnly && (diagramDragging || sort.drag?.from != null) && (
+        <div
+          data-element-delete-zone
+          className="element-delete-zone"
+          onDragOver={(e) => {
+            if (sort.drag?.from == null) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            e.currentTarget.classList.add('delete-hover');
+          }}
+          onDragLeave={(e) => e.currentTarget.classList.remove('delete-hover')}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const index = sort.drag?.from;
+            sort.cancel();
+            if (index != null) remove(index);
+          }}
+        >
+          <Trash2 size={22} /> 向下拖到这里，松手删除元件 · 可撤销
+        </div>
+      )}
       <div className="workspace-tools" role="toolbar" aria-label="方案工具栏">
         <select
           aria-label="当前机型"
@@ -327,6 +406,8 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
           selected={selected}
           onSelect={setSelected}
           onMove={move}
+          onRemove={remove}
+          onDragChange={setDiagramDragging}
           elementIds={rowKeys.ids}
           readOnly={readOnly}
           zoom={zoom}
@@ -340,7 +421,7 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
           <span>
             {valid
               ? '长度与工艺校验通过'
-              : `长度差 ${check.difference > 0 ? '+' : ''}${check.difference} mm · ${check.violations.length} 处工艺冲突${check.barrel_warnings.length ? ' · 自定义机筒待复核' : ''}`}
+              : `${check.difference > 0 ? `超长 ${check.difference} mm，请删减元件；禁止继续添加、保存或发布` : `剩余可用 ${-check.difference} mm`} · ${check.violations.length} 处工艺冲突${check.barrel_warnings.length ? ' · 自定义机筒待复核' : ''}`}
           </span>
           <button onClick={() => setModal('validation')}>查看校验</button>
         </div>
@@ -380,15 +461,23 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
           <div className="catalog-items">
             {items.map((c) => (
               <div
-                className="catalog-item"
+                className={`catalog-item${c.length > check.target - check.total ? ' capacity-disabled' : ''}`}
                 key={c.id}
-                draggable={!readOnly}
-                onDragStart={(e) => sort.startExternal(e, c.name)}
+                title={
+                  c.length > check.target - check.total
+                    ? `长度不足：元件 ${c.length} mm，剩余 ${Math.max(0, check.target - check.total)} mm`
+                    : undefined
+                }
+                draggable={!readOnly && c.length <= check.target - check.total}
+                onDragStart={(e) => {
+                  if (readOnly || c.length > check.target - check.total) e.preventDefault();
+                  else sort.startExternal(e, c.name);
+                }}
                 onDragEnd={sort.cancel}
               >
                 <button
                   className="component-add"
-                  disabled={readOnly}
+                  disabled={readOnly || c.length > check.target - check.total}
                   aria-label={`加入 ${c.name}`}
                   onClick={() => add(c.name)}
                 >
@@ -406,6 +495,9 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
                   <small>
                     {c.length} mm · {c.type}
                   </small>
+                  {c.length > check.target - check.total && (
+                    <span className="capacity-label">长度不足</span>
+                  )}
                 </button>
                 <button
                   className="detail-button"
@@ -514,8 +606,13 @@ export default function Designer({ data, editor, onSave, onProjects, run, notify
                       <ArrowDown size={13} />
                     </button>
                     <button
-                      disabled={readOnly}
+                      disabled={readOnly || c.length > check.target - check.total}
                       aria-label={`复制元件 ${index + 1}`}
+                      title={
+                        c.length > check.target - check.total
+                          ? '剩余轴长不足，无法复制'
+                          : '复制元件'
+                      }
                       onClick={(e) => {
                         e.stopPropagation();
                         add(c.name, index + 1);

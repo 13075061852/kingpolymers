@@ -1,5 +1,5 @@
 """Authentication integration test; all state lives in temporary directories."""
-import base64,json,os,tempfile,threading,urllib.request,urllib.error
+import base64,gzip,json,os,tempfile,threading,urllib.request,urllib.error
 from pathlib import Path
 from http.server import ThreadingHTTPServer
 import server
@@ -25,6 +25,17 @@ def run():
   try:
    assert req('/')[0]==303
    assert req('/login')[0]==200
+   asset='/assets/'+next((server.STATIC/'assets').glob('index-*.js')).name
+   status,body,headers=req(asset,extra={'Accept-Encoding':'gzip'})
+   assert status==200 and headers['Content-Encoding']=='gzip'
+   assert gzip.decompress(body)==(server.STATIC/asset.lstrip('/')).read_bytes()
+   assert 'immutable' in headers['Cache-Control'] and headers['Vary']=='Accept-Encoding'
+   assert req(asset,extra={'Accept-Encoding':'gzip','If-None-Match':headers['ETag']})[0]==304
+   assert req(asset,extra={'Accept-Encoding':'gzip;q=0'})[2].get('Content-Encoding') is None
+   poster='/assets/login/screw-fallback.webp'
+   status,body,headers=req(poster)
+   assert status==200 and headers.get('Content-Encoding') is None and headers['Cache-Control']=='no-cache'
+   assert req(poster,extra={'If-None-Match':headers['ETag']})[0]==304
    assert req('/api/bootstrap')[0]==401
    assert req('/api/bootstrap',extra={'Authorization':'Basic '+base64.b64encode(b'kingpolymer:sandbox-password-old').decode()})[0]==401
    login={'username':'kingpolymer','password':'sandbox-password-old'}

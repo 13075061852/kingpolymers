@@ -34,6 +34,17 @@ def run():
                 return r['id']
             assert call('/api/inventory/adjust',{'component_id':cid,'mode':'set','quantity':100})[0]==200
             pid=save('concurrent')
+            # A valid supervisor code cannot bypass the physical shaft capacity.
+            overlong=[name]*(boot['machines']['50']['element_length']//comp['length']+1)
+            status,result=call('/api/projects',{'machine':'50','sequence':overlong,'ports':{},'override_reason':'reviewed','confirm_code':server.CONFIRM_CODE})
+            assert status==422,(status,result)
+            legacy=save('legacy-overlong')
+            with server.db() as c:
+                c.execute('UPDATE projects SET sequence_json=? WHERE id=?',(json.dumps(overlong),legacy))
+            assert call('/api/projects/'+legacy+'/release',{'confirm_code':server.CONFIRM_CODE})[0]==422
+            with server.db() as c:
+                assert c.execute('SELECT status FROM projects WHERE id=?',(legacy,)).fetchone()[0]=='draft'
+                assert c.execute('SELECT stock FROM components WHERE id=?',(cid,)).fetchone()[0]==100
             def release(_):return call('/api/projects/'+pid+'/release',{'reason':'regression','confirm_code':server.CONFIRM_CODE})[0]
             with ThreadPoolExecutor(2) as pool:statuses=list(pool.map(release,range(2)))
             assert sorted(statuses)==[200,409],statuses
