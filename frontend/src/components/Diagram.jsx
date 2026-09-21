@@ -181,6 +181,17 @@ function Diagram({
               </g>
             );
           })}
+          {check.total > 0 && (
+            <path
+              className="screw-tip"
+              aria-label="螺杆头"
+              d={`M${right - check.total * scale} ${axisY}l-6 ${height / 2} 6 ${height / 2}z`}
+              fill="white"
+              stroke="#333"
+              strokeWidth="0.6"
+              pointerEvents="none"
+            />
+          )}
           {sort.slot && (
             <rect
               data-diagram-drop-slot="true"
